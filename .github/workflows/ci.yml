@@ -1,0 +1,45 @@
+name: Continuous Integration
+on:
+  pull_request:
+    branches: [develop]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_USERNAME: ${{ secrets.STELLA_GITHUB_PACKAGES_USERNAME }}
+      GITHUB_TOKEN: ${{ secrets.STELLA_GITHUB_PACKAGES_TOKEN }}
+      DOCKER_IMAGE_NAME: stellanow/stellanow-sdk-python
+    strategy:
+      fail-fast: false
+    steps:
+      - name: Cancel other workflow runs
+        uses: rokroskar/workflow-run-cleanup-action@v0.2.2
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Check if remote branch still exists
+        run: git ls-remote --exit-code origin ${{ github.ref }}
+      - name: Cancel if remote branch does not exist
+        if: failure()
+        uses: andymckay/cancel-action@0.2
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pipenv
+          pipenv install --ignore-pipfile --dev --pre
+      - name: Check formatting
+        run: |
+          pipenv run ./ci/010_autoflake.sh check
+          pipenv run ./ci/020_vulture.sh check
+          pipenv run ./ci/025_ruff.sh check
+          pipenv run ./ci/040_isort.sh check
+      - name: Test with pytest
+        run: pipenv run python -m pytest
+      - name: Container SARIF report
+        if: ${{ success() || failure() }}
+        run: cat ${{ steps.container_scan.outputs.sarif }}
