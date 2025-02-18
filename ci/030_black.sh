@@ -6,8 +6,8 @@ source ${DIR}/common.sh
 
 header Fortmating code
 if [[ ${CHECK} == "check" ]]; then
-  black ./stellanowops_cli -l 120 --check --diff --exclude '/input_roles\.py$'
+  black ./stellanow_sdk_python -l 120 --check --diff --exclude '/input_roles\.py$'
 else
-  black ./stellanowops_cli -l 120 --exclude '/input_roles\.py$'
+  black ./stellanow_sdk_python -l 120 --exclude '/input_roles\.py$'
 fi
 echo OK

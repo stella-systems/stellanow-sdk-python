@@ -14,32 +14,42 @@ jobs:
     steps:
       - name: Cancel other workflow runs
         uses: rokroskar/workflow-run-cleanup-action@v0.2.2
+
       - name: Checkout code
         uses: actions/checkout@v3
         with:
           ref: ${{ github.event.pull_request.head.sha }}
+
       - name: Check if remote branch still exists
         run: git ls-remote --exit-code origin ${{ github.ref }}
+
       - name: Cancel if remote branch does not exist
         if: failure()
         uses: andymckay/cancel-action@0.2
+
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: 3.11
-      - name: Install dependencies
+
+      - name: Install Poetry
         run: |
-          python -m pip install --upgrade pip
-          pip install pipenv
-          pipenv install --ignore-pipfile --dev --pre
+          curl -sSL https://install.python-poetry.org | python3 -
+          echo "${HOME}/.local/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies using Poetry
+        run: poetry install --no-root
+
       - name: Check formatting
         run: |
-          pipenv run ./ci/010_autoflake.sh check
-          pipenv run ./ci/020_vulture.sh check
-          pipenv run ./ci/025_ruff.sh check
-          pipenv run ./ci/040_isort.sh check
+          poetry run autoflake --check .
+          poetry run isort --check-only .
+          poetry run black --check .
+          poetry run ruff .
+
       - name: Test with pytest
-        run: pipenv run python -m pytest
+        run: poetry run pytest
+
       - name: Container SARIF report
         if: ${{ success() || failure() }}
         run: cat ${{ steps.container_scan.outputs.sarif }}

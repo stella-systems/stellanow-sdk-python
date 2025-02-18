@@ -6,8 +6,8 @@ source ${DIR}/common.sh
 
 header Fortmating code
 if [[ ${CHECK} == "check" ]]; then
-  ruff check  ./stellanowops_cli --quiet
+  ruff check  ./stellanow_sdk_python --quiet
 else
-   ruff check  ./stellanowops_cli
+   ruff check  ./stellanow_sdk_python
 fi
 echo OK

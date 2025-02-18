@@ -6,5 +6,5 @@ source ${DIR}/common.sh
 
 
 header Lunching mypy - Typing check
-mypy --ignore-missing-imports --check-untyped-defs stellanowops_cli
+mypy --ignore-missing-imports --check-untyped-defs stellanow_sdk_python
 echo ok
