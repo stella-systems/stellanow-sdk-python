@@ -19,27 +19,18 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 """
-from collections import deque
-import threading
+from stellanow_sdk_python.mqtt.mqtt_client import StellaNowMQTTClient
 
 
-class LifoMessageQueue:
+class StellaNowSDK:
     def __init__(self):
-        self.stack = deque()
-        self.lock = threading.Lock()
+        self.mqtt_client = StellaNowMQTTClient()
 
-    def enqueue(self, message):
-        with self.lock:
-            self.stack.append(message)
+    async def start(self):
+        await self.mqtt_client.connect()
 
-    def try_dequeue(self):
-        with self.lock:
-            return self.stack.pop() if self.stack else None
+    async def send_message(self, message):
+        await self.mqtt_client.publish_message(message)
 
-    def is_empty(self):
-        with self.lock:
-            return not self.stack
-
-    def get_message_count(self):
-        with self.lock:
-            return len(self.stack)
+    def stop(self):
+        self.mqtt_client.stop()

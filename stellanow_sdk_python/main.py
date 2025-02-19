@@ -19,72 +19,20 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 """
-import threading
-import time
-import paho.mqtt.client as mqtt
-import os
+import asyncio
 
-from stellanow_sdk_python.settings import API_KEY, API_SECRET, ORGANIZATION_ID, PROJECT_ID, CLIENT_ID
-from stellanow_sdk_python.authentication.auth_service import StellaNowAuthenticationService
-from stellanow_sdk_python.message_queue.lifo_message_queue import LifoMessageQueue
+from stellanow_sdk_python.sdk import StellaNowSDK
 
 
-class StellaNowSDK:
-    def __init__(self, broker_url, port, auth_service, client_id):
-        self.broker_url = broker_url
-        self.port = port
-        self.auth_service = auth_service
-        self.client_id = client_id
-        self.queue = LifoMessageQueue()
-        self.client = mqtt.Client(client_id)
-
-        self.running = False
-        self.connection_thread = threading.Thread(target=self._manage_connection, daemon=True)
-        self.queue_thread = threading.Thread(target=self._process_queue, daemon=True)
-
-    def _manage_connection(self):
-        while self.running:
-            try:
-                access_token = self.auth_service.get_access_token()
-                if not access_token:
-                    self.auth_service.authenticate()
-                    access_token = self.auth_service.get_access_token()
-
-                self.client.username_pw_set(self.auth_service.api_key, self.auth_service.api_secret)
-                self.client.connect(self.broker_url, self.port, 60)
-                self.client.loop_forever()
-            except Exception as e:
-                print(f"Connection error: {e}, retrying in 5 seconds")
-                time.sleep(5)
-
-    def _process_queue(self):
-        while self.running:
-            message = self.queue.try_dequeue()
-            if message:
-                self.client.publish(message['topic'], message['payload'])
-                print("Message sent:", message)
-            time.sleep(1)
-
-    def send_message(self, topic, payload):
-        self.queue.enqueue({"topic": topic, "payload": payload})
-        print("Message queued")
-
-    def start(self):
-        self.running = True
-        self.connection_thread.start()
-        self.queue_thread.start()
-
-    def stop(self):
-        self.running = False
-        self.client.disconnect()
-        self.connection_thread.join()
-        self.queue_thread.join()
+async def main():
+    sdk = StellaNowSDK()
+    await sdk.start()
+    await sdk.send_message("Hello from StellaNow SDK!")
+    await sdk.send_message("Hello from StellaNow SDK2!")
+    await sdk.send_message("Hello from StellaNow SDK3!")
+    await asyncio.sleep(5)
+    sdk.stop()
 
 
 if __name__ == "__main__":
-    auth_service = StellaNowAuthenticationService("https://auth.example.com", ORGANIZATION_ID, API_KEY, API_SECRET)
-    sdk = StellaNowSDK("mqtt.example.com", 8883, auth_service, CLIENT_ID)
-    sdk.start()
-    sdk.send_message("test/topic", "Hello StellaNow")
-    time.sleep(10)
-    sdk.stop()
+    asyncio.run(main())

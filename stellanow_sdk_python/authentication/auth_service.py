@@ -19,55 +19,87 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 """
-import requests
+import asyncio
+from datetime import datetime, timedelta
+from urllib.parse import urljoin
+
+from keycloak import KeycloakOpenID
+from keycloak.exceptions import KeycloakError
+from loguru import logger
+
+from stellanow_sdk_python.settings import API_KEY, API_SECRET, AUTH_BASE_URL, OIDC_CLIENT_ID, ORGANIZATION_ID
+
+
+def get_auth_url(base_url: str, realm_id: str) -> str:
+    base_url = base_url.rstrip("/") + "/"  # Ensure trailing slash for urljoin
+    return urljoin(base_url, f"realms/{realm_id}/protocol/openid-connect/token")
 
 
 class StellaNowAuthenticationService:
-    def __init__(self, authority, organization_id, api_key, api_secret):
-        self.discovery_document_url = f"{authority}/realms/{organization_id}/.well-known/openid-configuration"
-        self.api_key = api_key
-        self.api_secret = api_secret
+    def __init__(self):
+        self.keycloak_openid = KeycloakOpenID(
+            server_url=AUTH_BASE_URL,
+            client_id=OIDC_CLIENT_ID,
+            realm_name=ORGANIZATION_ID,
+            verify=True,
+        )
         self.token_response = None
-        self.discovery_document = self._get_discovery_document()
+        self.token_expires = None
+        self.lock = asyncio.Lock()
 
-    def _get_discovery_document(self):
-        response = requests.get(self.discovery_document_url)
-        response.raise_for_status()
-        return response.json()
+    async def authenticate(self):
+        """
+        Authenticate and get the access token asynchronously
+        """
+        async with self.lock:
+            try:
+                self.token_response = await self.keycloak_openid.a_token(
+                    username=API_KEY,
+                    password=API_SECRET,
+                )
+                self.token_expires = self._calculate_token_expires_time(self.token_response)
+                logger.info("Authentication successful!")
+                return self.token_response["access_token"]
+            except KeycloakError as e:
+                logger.error(f"Keycloak authentication error: {e}")
+                raise Exception("Failed to authenticate with Keycloak")
 
-    def authenticate(self):
-        if not self.refresh_tokens():
-            self.login()
+    def _calculate_token_expires_time(self, token_response):
+        token_expires_time = datetime.now() + timedelta(seconds=token_response.get("expires_in", 60))
+        return token_expires_time - timedelta(seconds=10)  # 10 seconds buffer
 
-    def login(self):
-        token_url = self.discovery_document['token_endpoint']
-        data = {
-            'client_id': 'StellaNowSDK',
-            'username': self.api_key,
-            'password': self.api_secret,
-            'grant_type': 'password'
-        }
-        response = requests.post(token_url, data=data)
-        if response.status_code == 200:
-            self.token_response = response.json()
-        else:
-            raise Exception("Failed to authenticate")
+    def _is_token_expired(self):
+        """
+        Check if the access token is expired or about to expire
+        """
+        return datetime.now() >= self.token_expires
 
-    def refresh_tokens(self):
-        if not self.token_response:
-            return False
+    async def get_access_token(self):
+        """
+        Get the access token, refreshing it if necessary
+        """
+        if self.token_response is None or self._is_token_expired():
+            logger.info("Token expired or missing. Re-authenticating...")
+            return await self.authenticate()
 
-        token_url = self.discovery_document['token_endpoint']
-        data = {
-            'client_id': 'StellaNowSDK',
-            'refresh_token': self.token_response.get('refresh_token'),
-            'grant_type': 'refresh_token'
-        }
-        response = requests.post(token_url, data=data)
-        if response.status_code == 200:
-            self.token_response = response.json()
-            return True
-        return False
+        return self.token_response["access_token"]
 
-    def get_access_token(self):
-        return self.token_response.get('access_token') if self.token_response else None
+    async def refresh_access_token(self):
+        """
+        Refresh the access token asynchronously using the refresh token
+        """
+        async with self.lock:
+            try:
+                refresh_token = self.token_response.get("refresh_token")
+                if not refresh_token:
+                    logger.error("No refresh token available.")
+                    raise Exception("No refresh token available.")
+
+                logger.info("Refreshing access token...")
+                self.token_response = await self.keycloak_openid.a_refresh_token(refresh_token)
+                self.token_expires = self._calculate_token_expires_time(self.token_response)
+                logger.info("Access token refreshed successfully.")
+                return self.token_response["access_token"]
+            except KeycloakError as e:
+                logger.error(f"Failed to refresh access token: {e}")
+                raise Exception("Failed to refresh access token")
