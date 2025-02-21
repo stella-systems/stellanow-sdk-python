@@ -53,10 +53,7 @@ class StellaNowAuthenticationService:
         """
         async with self.lock:
             try:
-                self.token_response = await self.keycloak_openid.a_token(
-                    username=API_KEY,
-                    password=API_SECRET,
-                )
+                self.token_response = await self.keycloak_openid.a_token(username=API_KEY, password=API_SECRET)
                 self.token_expires = self._calculate_token_expires_time(self.token_response)
                 logger.info("Authentication successful!")
                 return self.token_response["access_token"]
