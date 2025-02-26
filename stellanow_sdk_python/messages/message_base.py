@@ -19,17 +19,11 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 """
-
 from typing import Dict, List
 
+from pydantic import BaseModel
 
-class StellaNowMessageBase:
-    def __init__(self, event_name: str, entities: List[Dict[str, str]]):
-        self.event_name = event_name
-        self.entities = entities
 
-    def to_dict(self):
-        """
-        Convert the message to a dictionary, excluding private attributes.
-        """
-        return {key: value for key, value in self.__dict__.items() if not key.startswith("_")}
+class StellaNowMessageBase(BaseModel):
+    event_name: str
+    entities: List[Dict[str, str]]

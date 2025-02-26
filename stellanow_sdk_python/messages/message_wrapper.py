@@ -19,30 +19,41 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 """
-import json
 import uuid
 from datetime import datetime
+from typing import Any, Dict, List
 
-from stellanow_sdk_python.messages.message_base import StellaNowMessageBase
+from pydantic import BaseModel
 
 
-class StellaNowMessageWrapper:
-    def __init__(self, message: StellaNowMessageBase, organization_id: str, project_id: str, event_id: str):
-        self.key = {"organizationId": organization_id, "projectId": project_id, "eventId": event_id}
-        self.value = {
-            "metadata": {
-                "messageId": str(uuid.uuid4()),
-                "messageOriginDateUTC": datetime.utcnow().isoformat() + "Z",
-                "eventTypeDefinitionId": message.event_name,
-                "entityTypeIds": [
-                    {"entityTypeDefinitionId": entity["type"], "entityId": entity["id"]} for entity in message.entities
-                ],
+class Metadata(BaseModel):
+    messageId: str
+    messageOriginDateUTC: str
+    eventTypeDefinitionId: str
+    entityTypeIds: List[Dict[str, str]]
+
+
+class StellaNowMessageWrapper(BaseModel):
+    key: Dict[str, str]
+    value: Dict[str, Any]
+
+    @classmethod
+    def create(cls, message: BaseModel, organization_id: str, project_id: str, event_id: str):
+        entity_ids = [entity["type"] + "EntityId" for entity in message.entities]
+        exclude_payload_fields = {"event_name", "entities"}.union(set(entity_ids))
+
+        metadata = Metadata(
+            messageId=str(uuid.uuid4()),
+            messageOriginDateUTC=datetime.utcnow().isoformat() + "Z",
+            eventTypeDefinitionId=message.event_name,
+            entityTypeIds=[
+                {"entityTypeDefinitionId": entity["type"], "entityId": entity["id"]} for entity in message.entities
+            ],
+        )
+        return cls(
+            key={"organizationId": organization_id, "projectId": project_id, "eventId": event_id},
+            value={
+                "metadata": metadata.model_dump(),
+                "payload": message.model_dump(exclude=exclude_payload_fields),
             },
-            "payload": json.dumps(message.to_dict()),
-        }
-
-    def to_json(self):
-        """
-        Serialize the wrapper to a JSON-formatted string.
-        """
-        return json.dumps({"key": self.key, "value": self.value}, indent=2)
+        )

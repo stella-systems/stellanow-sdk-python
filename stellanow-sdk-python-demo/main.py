@@ -25,7 +25,9 @@ import uuid
 from stellanow_sdk_python.settings import ORGANIZATION_ID, PROJECT_ID
 
 from stellanow_sdk_python.messages.message_wrapper import StellaNowMessageWrapper
+from models.phone_number_model import PhoneNumberModel
 from stellanow_sdk_python.sdk import StellaNowSDK
+from user_details_message import UserDetailsMessage
 
 
 async def main():
@@ -33,7 +35,9 @@ async def main():
     await sdk.start()
 
     # Create the message
-    message = "Empty Message"
+    message = UserDetailsMessage(
+        patronEntityId="12345", user_id="user_67890", phone_number=PhoneNumberModel(country_code=44, number=753594)
+    )
 
     # Wrap the message
     wrapped_message = StellaNowMessageWrapper.create(
