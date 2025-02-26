@@ -22,10 +22,9 @@ IN THE SOFTWARE.
 import asyncio
 import uuid
 
-from stellanow_sdk_python.settings import ORGANIZATION_ID, PROJECT_ID
-
 from stellanow_sdk_python.messages.message_wrapper import StellaNowMessageWrapper
 from stellanow_sdk_python.sdk import StellaNowSDK
+from stellanow_sdk_python.settings import ORGANIZATION_ID, PROJECT_ID
 
 
 async def main():
