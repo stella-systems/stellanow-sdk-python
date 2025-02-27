@@ -42,10 +42,11 @@ jobs:
 
       - name: Check formatting
         run: |
-          poetry run autoflake --check .
-          poetry run isort --check-only .
-          poetry run black --check .
-          poetry run ruff .
+          poetry run ./ci/010_autoflake.sh check
+          poetry run ./ci/020_vulture.sh check
+          poetry run ./ci/025_ruff.sh check
+          poetry run ./ci/030_black.sh check
+          poetry run ./ci/040_isort.sh check
 
       - name: Test with pytest
         run: poetry run pytest
