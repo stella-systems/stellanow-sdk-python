@@ -19,18 +19,3 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 """
-from stellanow_sdk_python.mqtt.mqtt_client import StellaNowMQTTClient
-
-
-class StellaNowSDK:
-    def __init__(self, mqtt_client=None):
-        self.mqtt_client = mqtt_client or StellaNowMQTTClient()
-
-    async def start(self):
-        await self.mqtt_client.connect()
-
-    async def send_message(self, message):
-        await self.mqtt_client.publish_message(message)
-
-    def stop(self):
-        self.mqtt_client.stop()

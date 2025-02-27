@@ -42,7 +42,8 @@ class StellaNowMessageQueue:
         """
         self.message_handler = message_handler
         self.processing = True
-        self.queue_thread.start()
+        if not self.queue_thread.is_alive():
+            self.queue_thread.start()
         logger.info("Message queue processing started...")
 
     def stop_processing(self):
@@ -50,7 +51,8 @@ class StellaNowMessageQueue:
         Stop the queue processing
         """
         self.processing = False
-        self.queue_thread.join()
+        if self.queue_thread.is_alive():
+            self.queue_thread.join()
         logger.info("Message queue processing stopped.")
 
     def enqueue(self, message):
