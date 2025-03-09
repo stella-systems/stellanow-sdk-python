@@ -21,27 +21,26 @@ IN THE SOFTWARE.
 """
 
 import asyncio
-import queue
 import threading
-import time
 
 from loguru import logger
 
+from stellanow_sdk_python.message_queue.message_queue_strategy.i_message_queue_strategy import IMessageQueueStrategy
+from stellanow_sdk_python.sinks.i_stellanow_sink import IStellaNowSink
+
 
 class StellaNowMessageQueue:
-    def __init__(self):
-        self.queue = queue.Queue()
-        self.lock = threading.Lock()
+    def __init__(self, strategy: IMessageQueueStrategy, sink: IStellaNowSink):
+        self.strategy = strategy
+        self.sink = sink
         self.processing = False
-        self.message_handler = None
         self.queue_thread = threading.Thread(target=self._process_queue)
         self.queue_thread.daemon = True
 
-    def start_processing(self, message_handler):
+    def start_processing(self):
         """
-        Start processing the queue in a separate thread
+        Start processing the queue in a separate thread.
         """
-        self.message_handler = message_handler
         self.processing = True
         if not self.queue_thread.is_alive():
             self.queue_thread.start()
@@ -49,45 +48,50 @@ class StellaNowMessageQueue:
 
     def stop_processing(self):
         """
-        Stop the queue processing
+        Stop the queue processing.
         """
         self.processing = False
         if self.queue_thread.is_alive():
             self.queue_thread.join()
         logger.info("Message queue processing stopped.")
 
-    def enqueue(self, message):
+    def enqueue(self, message: str):
         """
-        Add a message to the queue
+        Add a message to the queue.
         """
-        with self.lock:
-            self.queue.put(message)
-            logger.info(f"Message queued: {message}")
+        self.strategy.enqueue(message)
+        logger.info(f"Message queued: {message}")
 
     def _process_queue(self):
         """
-        Process the queue in a separate thread
+        Process the queue in a separate thread.
         """
-        while self.processing:
+        while self.processing or not self.strategy.is_empty():
             try:
-                if not self.queue.empty():
-                    message = self.queue.get()
-                    if self.message_handler:
-                        asyncio.run(self.message_handler(message))
-                    self.queue.task_done()
-                else:
-                    time.sleep(0.5)
+                message = self.strategy.try_dequeue()
+                if message:
+                    asyncio.run(self._send_message_to_sink(message))
             except Exception as e:
                 logger.error(f"Error processing message queue: {e}")
 
-    def is_empty(self):
+    async def _send_message_to_sink(self, message: str):
         """
-        Check if the queue is empty
+        Send a message to the sink.
         """
-        return self.queue.empty()
+        try:
+            await self.sink.send_message(message)
+            logger.info(f"Message sent to sink: {message}")
+        except Exception as e:
+            logger.error(f"Failed to send message to sink: {e}")
 
-    def get_message_count(self):
+    def is_empty(self) -> bool:
         """
-        Get the number of messages in the queue
+        Check if the queue is empty.
         """
-        return self.queue.qsize()
+        return self.strategy.is_empty()
+
+    def get_message_count(self) -> int:
+        """
+        Get the number of messages in the queue.
+        """
+        return self.strategy.get_message_count()

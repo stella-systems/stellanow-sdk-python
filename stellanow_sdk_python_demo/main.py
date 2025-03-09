@@ -22,36 +22,36 @@ IN THE SOFTWARE.
 import asyncio
 import uuid
 
-from stellanow_sdk_python.settings import ORGANIZATION_ID, PROJECT_ID
+from sinks.mqtt.auth_strategy.oidc_mqtt_auth_strategy import OidcMqttAuthStrategy
+from sinks.mqtt.stellanow_mqtt_sink import StellaNowMqttSink
+from stellanow_sdk_python.message_queue.message_queue_strategy.fifo_messsage_queue_strategy import FifoMessageQueueStrategy
 
-from stellanow_sdk_python.messages.message_wrapper import StellaNowMessageWrapper
 from models.phone_number_model import PhoneNumberModel
 from stellanow_sdk_python.sdk import StellaNowSDK
 from user_details_message import UserDetailsMessage
 
 
 async def main():
-    sdk = StellaNowSDK()
+    queue_strategy = FifoMessageQueueStrategy()
+    auth_strategy = OidcMqttAuthStrategy()
+    mqtt_sink = StellaNowMqttSink(auth_strategy=auth_strategy)
+
+    sdk = StellaNowSDK(sink=mqtt_sink, queue_strategy=queue_strategy)
     await sdk.start()
 
-    # Create the message
+    # Create the messages
     message = UserDetailsMessage(
         patronEntityId="12345", user_id="user_67890", phone_number=PhoneNumberModel(country_code=44, number=753594)
     )
-
-    # Wrap the message
-    wrapped_message = StellaNowMessageWrapper.create(
-        message=message,
-        organization_id=ORGANIZATION_ID,
-        project_id=PROJECT_ID,
-        event_id=str(uuid.uuid4()),
+    message2 = UserDetailsMessage(
+        patronEntityId="12345", user_id="user_98888", phone_number=PhoneNumberModel(country_code=48, number=700000)
     )
 
-    # Send the wrapped message
-    await sdk.send_message(wrapped_message.model_dump_json())
+    await sdk.send_message(message)
+    await sdk.send_message(message2)
 
     await asyncio.sleep(5)
-    sdk.stop()
+    await sdk.stop()
 
 
 if __name__ == "__main__":

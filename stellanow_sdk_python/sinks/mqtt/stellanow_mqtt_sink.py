@@ -25,14 +25,18 @@ import asyncio
 import paho.mqtt.client as mqtt
 from loguru import logger
 
-from stellanow_sdk_python.authentication.auth_service import StellaNowAuthenticationService
-from stellanow_sdk_python.message_queue.message_queue import StellaNowMessageQueue
 from stellanow_sdk_python.settings import MQTT_BROKER_PORT, MQTT_BROKER_URL, MQTT_CLIENT_ID, MQTT_KEEP_ALIVE, MQTT_TOPIC
+from stellanow_sdk_python.sinks.i_stellanow_sink import IStellaNowSink
+from stellanow_sdk_python.sinks.mqtt.auth_strategy.i_mqtt_auth_strategy import IMqttAuthStrategy
 
 
-class StellaNowMQTTClient:
-    def __init__(self):
-        self.auth_service = StellaNowAuthenticationService()
+class StellaNowMqttSink(IStellaNowSink):
+    """
+    MQTT implementation of the StellaNow Sink.
+    """
+
+    def __init__(self, auth_strategy: IMqttAuthStrategy):
+        self.auth_strategy = auth_strategy
         self.client = mqtt.Client(
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2,  # noqa
             transport="websockets",
@@ -42,17 +46,13 @@ class StellaNowMQTTClient:
         self.is_connected = asyncio.Event()
         self.reconnect_attempts = 0
 
-        # Initialize the Message Queue
-        self.message_queue = StellaNowMessageQueue()
-
-    async def connect(self):
+    async def connect(self) -> None:
         """
-        Asynchronously connect to the MQTT broker
+        Connects to the MQTT broker.
         """
         try:
-            access_token = await self.auth_service.get_access_token()
-            self.client.username_pw_set(access_token, password=None)
-            self.client.tls_set()
+            # Authenticate the MQTT client using the configured strategy
+            await self.auth_strategy.authenticate(self.client)
 
             # Assign all necessary callbacks
             self.client.on_connect = self.on_connect
@@ -63,15 +63,47 @@ class StellaNowMQTTClient:
             self.client.connect(MQTT_BROKER_URL, MQTT_BROKER_PORT, MQTT_KEEP_ALIVE)
             self.client.loop_start()
 
-            # Start processing the message queue
-            self.message_queue.start_processing(self._process_message)
-
             # Wait until connected
             await self.wait_for_connection()
 
         except Exception as e:
             logger.error(f"Unexpected error during MQTT connection: {e}")
             await self.handle_connection_error(e)
+
+    async def disconnect(self) -> None:
+        """
+        Disconnects from the MQTT broker.
+        """
+        logger.info("Disconnecting from MQTT broker...")
+        self.client.loop_stop()
+        self.client.disconnect()
+        self.is_connected.clear()
+        logger.info("Disconnected from MQTT broker.")
+
+    async def send_message(self, message: str) -> None:
+        """
+        Sends a message to the MQTT broker.
+        :param message: The message to send.
+        """
+        if not self.is_connected.is_set():
+            raise Exception("MQTT sink is not connected.")
+
+        await self.wait_for_connection()
+        result = self.client.publish(MQTT_TOPIC, message)
+        status = result.rc
+
+        if status == mqtt.MQTT_ERR_SUCCESS:
+            logger.info(f"Message sent: {message}")
+        else:
+            logger.error(f"Failed to send message. Status: {status}")
+            await self.handle_publish_error(status)
+
+    def is_connected(self) -> bool:
+        """
+        Checks if the MQTT sink is connected.
+        :return: True if connected; otherwise, False.
+        """
+        return self.is_connected.is_set()
 
     def on_connect(self, client, userdata, flags, reason_code, properties):  # noqa
         if reason_code == 0:
@@ -84,6 +116,8 @@ class StellaNowMQTTClient:
     def on_disconnect(self, client, userdata, reason_code, properties, x):  # noqa
         logger.warning("Disconnected from MQTT broker")
         self.is_connected.clear()
+        if reason_code != mqtt.MQTT_ERR_SUCCESS:
+            asyncio.run(self.handle_connection_error(reason_code))
 
     def on_publish(self, client, userdata, mid, reason_code, properties):  # noqa
         """
@@ -97,26 +131,6 @@ class StellaNowMQTTClient:
         """
         while not self.is_connected.is_set():
             await asyncio.sleep(0.5)
-
-    async def publish_message(self, message):
-        """
-        Queue the message for publishing
-        """
-        logger.info(f"Queueing message: {message}")
-        self.message_queue.enqueue(message)
-
-    async def _process_message(self, message):
-        """
-        Process and publish a message from the queue
-        """
-        await self.wait_for_connection()
-        result = self.client.publish(MQTT_TOPIC, message)
-        status = result.rc
-
-        if status == mqtt.MQTT_ERR_SUCCESS:
-            logger.info(f"Message sent: {message}")
-        else:
-            logger.error(f"Failed to send message. Status: {status}")
 
     async def handle_connection_error(self, error):
         """
@@ -137,12 +151,3 @@ class StellaNowMQTTClient:
         logger.error(f"Handling publish error: {error}")
         await self.wait_for_connection()
         logger.info("Retrying message publish...")
-
-    def stop(self):
-        """
-        Stop the MQTT client and message queue
-        """
-        self.message_queue.stop_processing()
-        self.client.loop_stop()
-        self.client.disconnect()
-        logger.info("MQTT client stopped.")
