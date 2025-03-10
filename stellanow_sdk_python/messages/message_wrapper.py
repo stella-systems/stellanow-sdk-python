@@ -20,11 +20,15 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 """
 
+import json
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List
 
 from pydantic import BaseModel
+
+from stellanow_sdk_python.messages.message_base import StellaNowMessageBase
+from stellanow_sdk_python.messages.message_converter import convert_datetime_fields
 
 
 class Metadata(BaseModel):
@@ -39,9 +43,16 @@ class StellaNowMessageWrapper(BaseModel):
     value: Dict[str, Any]
 
     @classmethod
-    def create(cls, message: BaseModel, organization_id: str, project_id: str, event_id: str):
+    def create(cls, message: StellaNowMessageBase, organization_id: str, project_id: str, event_id: str):
         entity_ids = [entity["type"] + "EntityId" for entity in message.entities]
         exclude_payload_fields = {"event_name", "entities"}.union(set(entity_ids))
+
+        # Convert message to dictionary while excluding specified fields
+        message_dict = message.model_dump(exclude=exclude_payload_fields)
+        # Ensure datetime fields are correctly serialized
+        serialized_payload = convert_datetime_fields(message_dict)
+        # Convert to JSON string
+        payload_json = json.dumps(serialized_payload)
 
         metadata = Metadata(
             messageId=str(uuid.uuid4()),
@@ -55,6 +66,6 @@ class StellaNowMessageWrapper(BaseModel):
             key={"organizationId": organization_id, "projectId": project_id, "eventId": event_id},
             value={
                 "metadata": metadata.model_dump(),
-                "payload": message.model_dump_json(exclude=exclude_payload_fields),
+                "payload": payload_json,
             },
         )

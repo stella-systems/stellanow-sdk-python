@@ -19,24 +19,28 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 """
+import os
+from typing import Optional
 
-from abc import ABC, abstractmethod
-
-import paho.mqtt.client as mqtt
+from loguru import logger
 
 
-class IMqttAuthStrategy(ABC):
+def read_env(name: str, missing: Optional[str] = None) -> str:
     """
-    Defines the config for an MQTT authentication strategy.
+    Read an environment variable, raising an error if not found and no fallback is provided.
+
+    Args:
+        name (str): The name of the environment variable.
+        missing (Optional[str]): The fallback value if the variable is not set.
+
+    Returns:
+        str: The value of the environment variable or the fallback.
+
+    Raises:
+        ValueError: If the variable is not set and no fallback is provided.
     """
-
-    @abstractmethod
-    async def authenticate(self, client: mqtt.Client) -> None:
-        """
-        Authenticates the MQTT client.
-        :param client: The MQTT client to authenticate.
-        """
-
-    @abstractmethod
-    def get_required_env_vars(self) -> list[str]:
-        """Return a list of required environment variables for this strategy."""
+    value = os.getenv(name, missing)
+    if value is None:
+        logger.error(f"Required environment variable '{name}' is not set")
+        raise ValueError(f"Required environment variable '{name}' is not set")
+    return value

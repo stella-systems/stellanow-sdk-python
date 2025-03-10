@@ -36,3 +36,7 @@ class NoAuthMqttAuthStrategy(IMqttAuthStrategy):
         No authentication is performed.
         """
         logger.info("Using NoAuth strategy for MQTT connection.")
+
+    def get_required_env_vars(self) -> list[str]:
+        """Return required environment variables for no-auth (none)."""
+        return []  # No auth-specific variables needed

@@ -43,18 +43,19 @@ from typing import Optional
 
 from loguru import logger
 
+from stellanow_sdk_python.config.stellanow_config import StellaProjectInfo
 from stellanow_sdk_python.message_queue.message_queue import StellaNowMessageQueue
 from stellanow_sdk_python.message_queue.message_queue_strategy.i_message_queue_strategy import IMessageQueueStrategy
 from stellanow_sdk_python.messages.message_wrapper import StellaNowMessageWrapper
-from stellanow_sdk_python.settings import ORGANIZATION_ID, PROJECT_ID
 from stellanow_sdk_python.sinks.i_stellanow_sink import IStellaNowSink
 
 
 class StellaNowSDK:
-    def __init__(self, sink: IStellaNowSink, queue_strategy: IMessageQueueStrategy):
-        self.queue_strategy = queue_strategy
-        self.message_queue = StellaNowMessageQueue(strategy=self.queue_strategy, sink=sink)
+    def __init__(self, project_info: StellaProjectInfo, sink: IStellaNowSink, queue_strategy: IMessageQueueStrategy):
+        """Initialize the SDK with project info, sink, and queue strategy."""
+        self.project_info = project_info
         self.sink = sink
+        self.message_queue = StellaNowMessageQueue(strategy=queue_strategy, sink=sink)
 
     async def start(self):
         """
@@ -70,8 +71,8 @@ class StellaNowSDK:
         """
         wrapped_message = StellaNowMessageWrapper.create(
             message=message,
-            organization_id=ORGANIZATION_ID,
-            project_id=PROJECT_ID,
+            organization_id=self.project_info.organization_id,
+            project_id=self.project_info.project_id,
             event_id=str(uuid.uuid4()),
         )
         self.message_queue.enqueue(wrapped_message.model_dump_json())
@@ -90,10 +91,8 @@ class StellaNowSDK:
         logger.info("message_queue is empty.")
 
     async def stop(self):
-        """
-        Stops the SDK after ensuring the message queue is empty.
-        """
+        """Stops the SDK after ensuring the message queue is empty."""
         self.wait_for_queue_to_empty()
         await self.sink.disconnect()
-        self.message_queue.stop_processing()
+        await self.message_queue.stop_processing(timeout=5.0)  # Add timeout
         logger.info("SDK stopped successfully.")

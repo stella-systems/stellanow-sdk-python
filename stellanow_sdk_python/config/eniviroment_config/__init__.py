@@ -19,24 +19,3 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 """
-
-from abc import ABC, abstractmethod
-
-import paho.mqtt.client as mqtt
-
-
-class IMqttAuthStrategy(ABC):
-    """
-    Defines the config for an MQTT authentication strategy.
-    """
-
-    @abstractmethod
-    async def authenticate(self, client: mqtt.Client) -> None:
-        """
-        Authenticates the MQTT client.
-        :param client: The MQTT client to authenticate.
-        """
-
-    @abstractmethod
-    def get_required_env_vars(self) -> list[str]:
-        """Return a list of required environment variables for this strategy."""

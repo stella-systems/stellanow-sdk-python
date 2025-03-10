@@ -22,39 +22,80 @@ IN THE SOFTWARE.
 
 import asyncio
 from datetime import datetime, timedelta
-from urllib.parse import urljoin
 
 from keycloak import KeycloakOpenID
 from keycloak.exceptions import KeycloakError
 from loguru import logger
 
-from stellanow_sdk_python.settings import API_KEY, API_SECRET, AUTH_BASE_URL, OIDC_CLIENT_ID, ORGANIZATION_ID
-
-
-def get_auth_url(base_url: str, realm_id: str) -> str:
-    base_url = base_url.rstrip("/") + "/"  # Ensure trailing slash for urljoin
-    return urljoin(base_url, f"realms/{realm_id}/protocol/openid-connect/token")
+from stellanow_sdk_python.config.eniviroment_config.stellanow_env_config import StellaNowEnvironmentConfig
+from stellanow_sdk_python.config.stellanow_auth_credentials import StellaNowCredentials
+from stellanow_sdk_python.config.stellanow_config import StellaProjectInfo
 
 
 class StellaNowAuthenticationService:
-    def __init__(self):
+    def __init__(
+        self, project_info: StellaProjectInfo, credentials: StellaNowCredentials, env_config: StellaNowEnvironmentConfig
+    ):
+        self.env_config = env_config
         self.keycloak_openid = KeycloakOpenID(
-            server_url=AUTH_BASE_URL,
-            client_id=OIDC_CLIENT_ID,
-            realm_name=ORGANIZATION_ID,
+            server_url=env_config.authority,
+            client_id=credentials.oidc_client_id,
+            realm_name=project_info.organization_id,
             verify=True,
         )
+        self.project_info = project_info
+        self.credentials = credentials
         self.token_response = None
         self.token_expires = None
         self.lock = asyncio.Lock()
+        self._refresh_task = None
+
+    async def start_refresh_task(self):
+        """Start a background task to refresh the token periodically."""
+        if self._refresh_task is None:
+            self._refresh_task = asyncio.create_task(self._auto_refresh())
+
+    async def stop_refresh_task(self):
+        """Stop the token refresh task."""
+        if self._refresh_task:
+            self._refresh_task.cancel()
+            try:
+                await self._refresh_task
+            except asyncio.CancelledError:
+                pass
+            self._refresh_task = None
+
+    async def _auto_refresh(self):
+        """Periodically refresh the token before it expires."""
+        while True:
+            if self.token_response and not self._is_token_expired():
+                expires_in = (self.token_expires - datetime.now()).total_seconds()
+                await asyncio.sleep(max(expires_in - 30, 1))
+            else:
+                logger.debug("No valid token to refresh, attempting initial authentication.")
+                await asyncio.sleep(1)
+            try:
+                await self.refresh_access_token()
+            except Exception as e:
+                logger.error(f"Failed to auto-refresh token: {e}")
+                await asyncio.sleep(60)
 
     async def authenticate(self):
-        """
-        Authenticate and get the access token asynchronously
-        """
+        """Authenticate and get the access token asynchronously."""
         async with self.lock:
             try:
-                self.token_response = await self.keycloak_openid.a_token(username=API_KEY, password=API_SECRET)
+                token_response = await self.keycloak_openid.a_token(
+                    username=self.credentials.oidc_username, password=self.credentials.oidc_password
+                )
+                if not isinstance(token_response, dict):
+                    logger.error(
+                        f"Unexpected response type from Keycloak: {type(token_response)}, value: {token_response}"
+                    )
+                    raise ValueError(f"Keycloak returned non-dict response: {token_response}")
+                if "access_token" not in token_response:
+                    logger.error(f"Token response missing 'access_token': {token_response}")
+                    raise ValueError(f"Token response missing 'access_token': {token_response}")
+                self.token_response = token_response
                 self.token_expires = self._calculate_token_expires_time(self.token_response)
                 logger.info("Authentication successful!")
                 return self.token_response["access_token"]
@@ -65,42 +106,32 @@ class StellaNowAuthenticationService:
                 )
                 logger.error(f"Keycloak authentication failed: {error_status} - {error_message}")
                 logger.debug(f"Full Keycloak error details: {e}")
-                if error_status == 403 and "Cloudflare" in str(e):
-                    logger.warning("Access denied by Cloudflare - check VPN or IP restrictions")
-                raise Exception("Failed to authenticate with Keycloak")
+                raise Exception(f"Failed to authenticate with Keycloak: {error_status} - {error_message}")
+            except Exception as e:
+                logger.error(f"Unexpected authentication error: {e}")
+                raise Exception(f"Authentication failed: {e}")
 
     @staticmethod
     def _calculate_token_expires_time(token_response):
         token_expires_time = datetime.now() + timedelta(seconds=token_response.get("expires_in", 60))
-        return token_expires_time - timedelta(seconds=10)  # 10 seconds buffer
+        return token_expires_time - timedelta(seconds=10)
 
     def _is_token_expired(self):
-        """
-        Check if the access token is expired or about to expire
-        """
         return datetime.now() >= self.token_expires
 
     async def get_access_token(self):
-        """
-        Get the access token, refreshing it if necessary
-        """
         if self.token_response is None or self._is_token_expired():
             logger.info("Token expired or missing. Re-authenticating...")
             return await self.authenticate()
-
         return self.token_response["access_token"]
 
     async def refresh_access_token(self):
-        """
-        Refresh the access token asynchronously using the refresh token
-        """
         async with self.lock:
+            if not self.token_response or "refresh_token" not in self.token_response:
+                logger.warning("No valid refresh token available, falling back to authenticate.")
+                return await self.authenticate()
             try:
-                refresh_token = self.token_response.get("refresh_token")
-                if not refresh_token:
-                    logger.error("No refresh token available.")
-                    raise Exception("No refresh token available.")
-
+                refresh_token = self.token_response["refresh_token"]
                 logger.info("Refreshing access token...")
                 self.token_response = await self.keycloak_openid.a_refresh_token(refresh_token)
                 self.token_expires = self._calculate_token_expires_time(self.token_response)
@@ -109,3 +140,111 @@ class StellaNowAuthenticationService:
             except KeycloakError as e:
                 logger.error(f"Failed to refresh access token: {e}")
                 raise Exception("Failed to refresh access token")
+
+
+# class StellaNowAuthenticationService:
+#     def __init__(
+#         self, project_info: StellaProjectInfo, credentials: StellaNowCredentials, env_config: StellaNowEnvironmentConfig
+#     ):
+#         self.keycloak_openid = KeycloakOpenID(
+#             server_url=env_config.authority,
+#             client_id=credentials.oidc_client_id,
+#             realm_name=project_info.organization_id,  # Use ORGANIZATION_ID as realm_name
+#             verify=True,
+#         )
+#         self.credentials = credentials
+#         self.token_response = None
+#         self.token_expires = None
+#         self.lock = asyncio.Lock()
+#         self._refresh_task = None
+#
+#     async def start_refresh_task(self):
+#         """Start a background task to refresh the token periodically."""
+#         if self._refresh_task is None:
+#             self._refresh_task = asyncio.create_task(self._auto_refresh())
+#
+#     async def stop_refresh_task(self):
+#         """Stop the token refresh task."""
+#         if self._refresh_task:
+#             self._refresh_task.cancel()
+#             try:
+#                 await self._refresh_task
+#             except asyncio.CancelledError:
+#                 pass
+#             self._refresh_task = None
+#
+#     async def _auto_refresh(self):
+#         """Periodically refresh the token before it expires."""
+#         while True:
+#             if self.token_response and not self._is_token_expired():
+#                 expires_in = (self.token_expires - datetime.now()).total_seconds()
+#                 await asyncio.sleep(max(expires_in - 30, 1))
+#             else:
+#                 logger.debug("No valid token to refresh, attempting initial authentication.")
+#                 await asyncio.sleep(1)  # Avoid tight loop if auth keeps failing
+#             try:
+#                 await self.refresh_access_token()
+#             except Exception as e:
+#                 logger.error(f"Failed to auto-refresh token: {e}")
+#                 await asyncio.sleep(60)
+#
+#     async def authenticate(self):
+#         """
+#         Authenticate and get the access token asynchronously
+#         """
+#         async with self.lock:
+#             try:
+#                 self.token_response = await self.keycloak_openid.a_token(
+#                     username=self.credentials.oidc_username, password=self.credentials.oidc_password
+#                 )
+#                 self.token_expires = self._calculate_token_expires_time(self.token_response)
+#                 logger.info("Authentication successful!")
+#                 return self.token_response["access_token"]
+#             except KeycloakError as e:
+#                 error_status = getattr(e, "response_code", "Unknown")
+#                 error_message = (
+#                     getattr(e, "error_message", str(e)).splitlines()[0] if hasattr(e, "error_message") else str(e)[:100]
+#                 )
+#                 logger.error(f"Keycloak authentication failed: {error_status} - {error_message}")
+#                 logger.debug(f"Full Keycloak error details: {e}")
+#                 if error_status == 403 and "Cloudflare" in str(e):
+#                     logger.warning("Access denied by Cloudflare - check VPN or IP restrictions")
+#                 raise Exception("Failed to authenticate with Keycloak")
+#
+#     @staticmethod
+#     def _calculate_token_expires_time(token_response):
+#         token_expires_time = datetime.now() + timedelta(seconds=token_response.get("expires_in", 60))
+#         return token_expires_time - timedelta(seconds=10)  # 10 seconds buffer
+#
+#     def _is_token_expired(self):
+#         """
+#         Check if the access token is expired or about to expire
+#         """
+#         return datetime.now() >= self.token_expires
+#
+#     async def get_access_token(self):
+#         """
+#         Get the access token, refreshing it if necessary
+#         """
+#         if self.token_response is None or self._is_token_expired():
+#             logger.info("Token expired or missing. Re-authenticating...")
+#             return await self.authenticate()
+#
+#         return self.token_response["access_token"]
+#
+#     async def refresh_access_token(self):
+#         """Refresh the access token asynchronously using the refresh token."""
+#         async with self.lock:
+#             if not self.token_response or "refresh_token" not in self.token_response:
+#                 logger.warning("No valid refresh token available, falling back to authenticate.")
+#                 return await self.authenticate()
+#             try:
+#                 refresh_token = self.token_response["refresh_token"]
+#                 logger.info("Refreshing access token...")
+#                 self.token_response = await self.keycloak_openid.a_refresh_token(refresh_token)
+#                 self.token_expires = self._calculate_token_expires_time(self.token_response)
+#                 logger.info("Access token refreshed successfully.")
+#                 return self.token_response["access_token"]
+#             except KeycloakError as e:
+#                 logger.error(f"Failed to refresh access token: {e}")
+#                 raise Exception("Failed to refresh access token")

@@ -25,9 +25,11 @@ import asyncio
 import paho.mqtt.client as mqtt
 from loguru import logger
 
-from stellanow_sdk_python.settings import MQTT_BROKER_PORT, MQTT_BROKER_URL, MQTT_CLIENT_ID, MQTT_KEEP_ALIVE, MQTT_TOPIC
+from stellanow_sdk_python.config.eniviroment_config.stellanow_env_config import StellaNowEnvironmentConfig
+from stellanow_sdk_python.config.stellanow_config import StellaProjectInfo
 from stellanow_sdk_python.sinks.i_stellanow_sink import IStellaNowSink
 from stellanow_sdk_python.sinks.mqtt.auth_strategy.i_mqtt_auth_strategy import IMqttAuthStrategy
+from stellanow_sdk_python.sinks.mqtt.auth_strategy.oidc_mqtt_auth_strategy import OidcMqttAuthStrategy
 
 
 class StellaNowMqttSink(IStellaNowSink):
@@ -35,13 +37,17 @@ class StellaNowMqttSink(IStellaNowSink):
     MQTT implementation of the StellaNow Sink.
     """
 
-    def __init__(self, auth_strategy: IMqttAuthStrategy):
+    def __init__(
+        self, auth_strategy: IMqttAuthStrategy, env_config: StellaNowEnvironmentConfig, project_info: StellaProjectInfo
+    ):
         self.auth_strategy = auth_strategy
+        self.env_config = env_config
+        self.project_info = project_info
         self.client = mqtt.Client(
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2,  # noqa
             transport="websockets",
             protocol=mqtt.MQTTv5,
-            client_id=MQTT_CLIENT_ID,  # noqa
+            client_id="StellaNowSDKPython",  # noqa
         )
         self.is_connected = asyncio.Event()
         self.reconnect_attempts = 0
@@ -55,19 +61,18 @@ class StellaNowMqttSink(IStellaNowSink):
             logger.info("Shutdown requested, skipping connection attempt.")
             return
         try:
-            # Authenticate the MQTT client using the configured strategy
+            # TODO Check if 'start_refresh_task' is valid
+            # Start token refresh if using OIDC
+            # if isinstance(self.auth_strategy, OidcMqttAuthStrategy):
+            #     await self.auth_strategy.auth_service.start_refresh_task()
             await self.auth_strategy.authenticate(self.client)
-
-            # Assign all necessary callbacks
             self.client.on_connect = self.on_connect
             self.client.on_disconnect = self.on_disconnect
             self.client.on_publish = self.on_publish
-
             logger.info("Connecting to MQTT broker...")
-            self.client.connect(MQTT_BROKER_URL, MQTT_BROKER_PORT, MQTT_KEEP_ALIVE)
+            # TODO Add port to env_config
+            self.client.connect(self.env_config.broker_url, 8083, 60)
             self.client.loop_start()
-
-            # Wait until connected
             await self.wait_for_connection()
         except Exception as e:
             logger.error(f"Unexpected error during MQTT connection: {e}")
@@ -79,7 +84,9 @@ class StellaNowMqttSink(IStellaNowSink):
         Disconnects from the MQTT broker.
         """
         logger.info("Disconnecting from MQTT broker...")
-        self._shutdown = True  # Stop retries
+        self._shutdown = True
+        if isinstance(self.auth_strategy, OidcMqttAuthStrategy):
+            await self.auth_strategy.auth_service.stop_refresh_task()
         self.client.loop_stop()
         self.client.disconnect()
         self.is_connected.clear()
@@ -93,7 +100,8 @@ class StellaNowMqttSink(IStellaNowSink):
             raise Exception("MQTT sink is not connected.")
 
         await self.wait_for_connection()
-        result = self.client.publish(MQTT_TOPIC, message)
+        mqtt_topic = f"in/{self.project_info.organization_id}"
+        result = self.client.publish(mqtt_topic, message)
         status = result.rc
 
         if status == mqtt.MQTT_ERR_SUCCESS:
@@ -130,10 +138,13 @@ class StellaNowMqttSink(IStellaNowSink):
                 asyncio.run(self.handle_connection_error(reason_code))
 
     def on_publish(self, client, userdata, mid, reason_code, properties):  # noqa
-        """
-        Callback when a message has been published
-        """
-        logger.success(f"Message published successfully with mid: {mid}")
+        """Callback when a message is published."""
+        if reason_code == mqtt.MQTT_ERR_SUCCESS:
+            logger.success(f"Message published successfully with mid: {mid}")
+        else:
+            logger.error(f"Failed to publish message with mid: {mid}, reason_code: {reason_code}")
+            if not self._shutdown:
+                asyncio.create_task(self.handle_publish_error(reason_code))
 
     async def wait_for_connection(self):
         """

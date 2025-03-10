@@ -20,23 +20,17 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 """
 
-from abc import ABC, abstractmethod
-
-import paho.mqtt.client as mqtt
+from datetime import date, datetime
 
 
-class IMqttAuthStrategy(ABC):
-    """
-    Defines the config for an MQTT authentication strategy.
-    """
-
-    @abstractmethod
-    async def authenticate(self, client: mqtt.Client) -> None:
-        """
-        Authenticates the MQTT client.
-        :param client: The MQTT client to authenticate.
-        """
-
-    @abstractmethod
-    def get_required_env_vars(self) -> list[str]:
-        """Return a list of required environment variables for this strategy."""
+def convert_datetime_fields(obj):
+    """Recursively converts all datetime and date fields to ISO 8601 format with 'Z' suffix."""
+    if isinstance(obj, dict):
+        return {key: convert_datetime_fields(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_datetime_fields(item) for item in obj]
+    elif isinstance(obj, datetime):
+        return obj.isoformat() + "Z"
+    elif isinstance(obj, date):
+        return obj.isoformat()
+    return obj

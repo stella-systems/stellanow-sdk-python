@@ -15,8 +15,9 @@ Before you start integrating the SDK, ensure you have a Stella Now account and v
 
 ## Installation
 To integrate the StellaNowSDK into your project, follow these steps:
-
-### TODO 
+```bash
+pip install stellanow-sdk-python
+```
 
 Creating these classes by hand can be prone to errors. Therefore, we provide a command line interface (CLI) tool, **StellaNow CLI**, to automate this task. This tool generates the code for the message classes automatically based on the configuration defined in the Operators Console.
 
@@ -30,10 +31,34 @@ Once you have installed the **StellaNow CLI** tool, you can use it to generate m
 
 Please note that it is discouraged to write these classes yourself. Using the CLI tool ensures that the message format aligns with the configuration defined in the Operators Console and reduces the potential for errors.
 
-## Customization
+## Usage
+Run the CLI to generate message classes:
+stellanow-cli generate-messages --config your-config.yaml --output stellanow_sdk_python_demo/models
+See the StellaNow CLI documentation (https://github.com/stellatechnologies/stellanow-cli) for details. Avoid writing message classes by hand to ensure compatibility and reduce errors.
 
-TODO 
+### Customization
+The SDK offers pre-defined configurations in stellanow_sdk_python/configure_sdk.py for common setups:
+- configure_dev_oidc_mqtt_fifo_sdk(): Dev environment, OIDC auth, MQTT sink, FIFO queue.
+- configure_sdev_username_mqtt_fifo_sdk(): Dev environment, username/password auth, MQTT sink, FIFO queue.
+- configure_prod_none_mqtt_fifo_sdk(): Prod environment, no auth, MQTT sink, FIFO queue.
 
+Example usage in stellanow_sdk_python_demo/main.py:
+from stellanow_sdk_python.config import configure_dev_oidc_mqtt_fifo_sdk
+
+sdk = configure_dev_oidc_mqtt_fifo_sdk()
+await sdk.start()
+
+To create custom configs:
+1. Modify config.py to add new configure_* functions with your preferred auth_strategy_type, env_config, and queue_strategy_type.
+2. Extend queue_strategies in configure_sdk for additional queue types (e.g., LIFO).
+
+### Demo
+The stellanow_sdk_python_demo/main.py script showcases SDK usage:
+- Initializes with a pre-defined config (e.g., OIDC, MQTT, FIFO).
+- Sends sample UserDetailsMessage events.
+- Handles shutdown gracefully.
+
+Run it with correct credentials to see it in action!
 ## Support
 For any issues or feature requests, feel free to create a new issue on our GitHub repository. If you need further assistance, contact our support team at help@stella.systems.
 

@@ -36,98 +36,62 @@ Key Features:
 This demo sends two `UserDetailsMessage` events, simulating real-time user data collection, and showcases the SDK's
 lifecycle: initialization, event sending, and shutdown.
 """
+
 import asyncio
-import uuid
-
 import sys
-from loguru import logger
-from stellanow_sdk_python.sinks.mqtt.auth_strategy.oidc_mqtt_auth_strategy import OidcMqttAuthStrategy
-from stellanow_sdk_python.sinks.mqtt.stellanow_mqtt_sink import StellaNowMqttSink
-from stellanow_sdk_python.message_queue.message_queue_strategy.fifo_messsage_queue_strategy import FifoMessageQueueStrategy
 
+from loguru import logger
 from models.phone_number_model import PhoneNumberModel
-from stellanow_sdk_python.sdk import StellaNowSDK
 from user_details_message import UserDetailsMessage
+
+from stellanow_sdk_python.configure_sdk import configure_dev_oidc_mqtt_fifo_sdk
 
 
 async def main():
-    """
-        Main entry point for the StellaNow SDK demo.
-
-        This function initializes the SDK with an MQTT sink and FIFO queue, sends sample user detail messages,
-        and ensures graceful shutdown on interruption or error.
-
-        Steps:
-        1. Configure logging with loguru for INFO-level output.
-        2. Set up the SDK with an MQTT sink (using OIDC auth) and FIFO message queue.
-        3. Start the SDK, connecting to the MQTT broker.
-        4. Send two sample `UserDetailsMessage` events.
-        5. Simulate work with a 5-second delay.
-        6. Handle interruptions (Ctrl+C) or errors, ensuring clean shutdown.
-    def __init__(self, sink: IStellaNowSink, queue_strategy: IMessageQueueStrategy):
-        self.queue_strategy = queue_strategy
-        self.message_queue = StellaNowMessageQueue(strategy=self.queue_strategy, sink=sink)
-        self.sink = sink
-"""
-    logger.remove()
-    logger.add(sys.stderr, level="INFO")
-    # Initialize SDK components
-    queue_strategy = FifoMessageQueueStrategy()  # First-in, first-out queue for ordered message processing
-    auth_strategy = OidcMqttAuthStrategy()  # OIDC-based authentication for secure MQTT communication
-    mqtt_sink = StellaNowMqttSink(auth_strategy=auth_strategy)  # MQTT sink for sending messages to the broker
-
-    # Create the SDK instance
-    sdk = StellaNowSDK(sink=mqtt_sink, queue_strategy=queue_strategy)
-    logger.info("SDK initialized with MQTT sink and FIFO queue strategy.")
-
+    """Main entry point for the StellaNow SDK demo."""
     try:
-        # Start the SDK, establishing the MQTT connection and queue processing
+        # Use pre-defined dev config with OIDC, MQTT, and FIFO
+        sdk = configure_dev_oidc_mqtt_fifo_sdk()
+
+        # Start the SDK
         await sdk.start()
         logger.info("SDK started successfully.")
 
-        # Create sample messages representing user details
+        # Create and send sample messages
         message = UserDetailsMessage(
-            patronEntityId="12345",
-            user_id="user_67890",
-            phone_number=PhoneNumberModel(country_code=44, number=753594)
+            patronEntityId="12345", user_id="user_67890", phone_number=PhoneNumberModel(country_code=44, number=753594)
         )
         message2 = UserDetailsMessage(
-            patronEntityId="12345",
-            user_id="user_98888",
-            phone_number=PhoneNumberModel(country_code=48, number=700000)
+            patronEntityId="12345", user_id="user_98888", phone_number=PhoneNumberModel(country_code=48, number=700000)
         )
-
-        # Send messages asynchronously to the StellaNow backend
         logger.info("Sending user detail messages...")
         await sdk.send_message(message)
         await sdk.send_message(message2)
         logger.info("Messages enqueued for processing.")
 
-        # Simulate ongoing work (e.g., waiting for more events)
+        # Simulate ongoing work
         await asyncio.sleep(5)
         logger.info("Simulation complete, preparing to shut down.")
 
     except KeyboardInterrupt:
-        # Handle Ctrl+C gracefully
         logger.warning("Received Ctrl+C, shutting down gracefully...")
         await sdk.stop()
     except Exception as e:
-        # Handle unexpected errors
         logger.error(f"Unexpected error occurred: {e}")
         await sdk.stop()
     finally:
-        # Ensure the SDK shuts down cleanly, even on failure
         await sdk.stop()
         logger.info("Demo completed.")
 
 
 if __name__ == "__main__":
-    """
-    Program entry point. Runs the demo within an asyncio event loop and handles top-level exceptions.
-    """
     try:
         asyncio.run(main())
+    except ValueError as e:
+        logger.error(f"Failed to start demo due to configuration error: {e}")
+        sys.exit(1)
     except KeyboardInterrupt:
         logger.info("Program interrupted by user, exiting cleanly.")
     except Exception as e:
         logger.error(f"Program terminated with unexpected error: {e}")
+        sys.exit(1)

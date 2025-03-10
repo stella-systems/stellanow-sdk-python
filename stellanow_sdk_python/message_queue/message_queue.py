@@ -21,7 +21,6 @@ IN THE SOFTWARE.
 """
 
 import asyncio
-import threading
 
 from loguru import logger
 
@@ -31,66 +30,72 @@ from stellanow_sdk_python.sinks.i_stellanow_sink import IStellaNowSink
 
 class StellaNowMessageQueue:
     def __init__(self, strategy: IMessageQueueStrategy, sink: IStellaNowSink):
+        """Initialize the message queue with a strategy and sink."""
         self.strategy = strategy
         self.sink = sink
         self.processing = False
-        self.queue_thread = threading.Thread(target=self._process_queue)
-        self.queue_thread.daemon = True
+        self._task = None  # Store the asyncio task
 
     def start_processing(self):
-        """
-        Start processing the queue in a separate thread.
-        """
-        self.processing = True
-        if not self.queue_thread.is_alive():
-            self.queue_thread.start()
-        logger.info("Message queue processing started...")
+        """Start processing the queue as an asyncio task."""
+        if not self.processing:
+            self.processing = True
+            loop = asyncio.get_running_loop()
+            self._task = loop.create_task(self._process_queue())
+            logger.info("Message queue processing started as asyncio task...")
 
-    def stop_processing(self):
+    async def stop_processing(self, timeout: float = 5.0):
         """
-        Stop the queue processing.
+        Stop the queue processing with an optional timeout.
+
+        Args:
+            timeout (float): Maximum time in seconds to wait for shutdown. Defaults to 5.0.
         """
-        self.processing = False
-        if self.queue_thread.is_alive():
-            self.queue_thread.join()
-        logger.info("Message queue processing stopped.")
+        if self.processing:
+            self.processing = False
+            if self._task:
+                try:
+                    await asyncio.wait_for(self._task, timeout=timeout)
+                except asyncio.TimeoutError:
+                    logger.warning(f"Queue processing did not stop within {timeout} seconds, forcing shutdown.")
+                    self._task.cancel()
+                    try:
+                        await self._task
+                    except asyncio.CancelledError:
+                        pass
+                finally:
+                    self._task = None
+            logger.info("Message queue processing stopped.")
 
     def enqueue(self, message: str):
-        """
-        Add a message to the queue.
-        """
+        """Add a message to the queue."""
         self.strategy.enqueue(message)
         logger.info(f"Message queued: {message}")
 
-    def _process_queue(self):
-        """
-        Process the queue in a separate thread.
-        """
+    async def _process_queue(self):
+        """Process the queue asynchronously using the existing event loop."""
         while self.processing or not self.strategy.is_empty():
             try:
                 message = self.strategy.try_dequeue()
                 if message:
-                    asyncio.run(self._send_message_to_sink(message))
+                    await self._send_message_to_sink(message)
+                else:
+                    await asyncio.sleep(0.1)  # Brief pause to avoid tight loop
             except Exception as e:
                 logger.error(f"Error processing message queue: {e}")
+                await asyncio.sleep(1)  # Back off on error
 
     async def _send_message_to_sink(self, message: str):
-        """
-        Send a message to the sink.
-        """
+        """Send a message to the sink."""
         try:
             await self.sink.send_message(message)
         except Exception as e:
             logger.error(f"Failed to send message to sink: {e}")
 
     def is_empty(self) -> bool:
-        """
-        Check if the queue is empty.
-        """
+        """Check if the queue is empty."""
         return self.strategy.is_empty()
 
     def get_message_count(self) -> int:
-        """
-        Get the number of messages in the queue.
-        """
+        """Get the number of messages in the queue."""
         return self.strategy.get_message_count()

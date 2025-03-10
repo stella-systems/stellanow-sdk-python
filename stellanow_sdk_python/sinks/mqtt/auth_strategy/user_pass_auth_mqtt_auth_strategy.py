@@ -33,7 +33,7 @@ class UserPassAuthMqttAuthStrategy(IMqttAuthStrategy):
 
     def __init__(self, username: str, password: str):
         """
-        Initializes the UserPassAuthMqttAuthStrategy.
+        Authentication strategy using a simple username and password.
         :param username: The username for MQTT authentication.
         :param password: The password for MQTT authentication.
         """
@@ -54,3 +54,7 @@ class UserPassAuthMqttAuthStrategy(IMqttAuthStrategy):
         except Exception as e:
             logger.error(f"Username/password authentication failed: {e}")
             raise Exception("Failed to authenticate MQTT client using username/password.")
+
+    def get_required_env_vars(self) -> list[str]:
+        """Return required environment variables for username/password authentication."""
+        return ["MQTT_USERNAME", "MQTT_PASSWORD"]
