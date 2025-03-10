@@ -22,6 +22,7 @@ IN THE SOFTWARE.
 
 import queue
 import threading
+from queue import Queue
 from typing import Optional
 
 from stellanow_sdk_python.message_queue.message_queue_strategy.i_message_queue_strategy import IMessageQueueStrategy
@@ -33,7 +34,7 @@ class FifoMessageQueueStrategy(IMessageQueueStrategy):
     """
 
     def __init__(self):
-        self._queue = queue.Queue()
+        self._queue: Queue = queue.Queue()
         self._lock = threading.Lock()
 
     def enqueue(self, message: str) -> None:

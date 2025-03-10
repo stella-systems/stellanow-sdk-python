@@ -55,6 +55,6 @@ class StellaNowMessageWrapper(BaseModel):
             key={"organizationId": organization_id, "projectId": project_id, "eventId": event_id},
             value={
                 "metadata": metadata.model_dump(),
-                "payload": message.model_dump(exclude=exclude_payload_fields),
+                "payload": message.model_dump_json(exclude=exclude_payload_fields),
             },
         )

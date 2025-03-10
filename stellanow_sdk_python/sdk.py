@@ -18,17 +18,32 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
+---
+
+StellaNow SDK Python Demo
+=========================
+
+This script demonstrates the usage of the StellaNow SDK for Python, a powerful tool for real-time analytics.
+The SDK enables developers to send event data (e.g., user details) to a StellaNow backend via a message queue and
+MQTT sink, with support for secure authentication using OpenID Connect (OIDC).
+
+Key Features:
+- Asynchronous event sending for non-blocking performance.
+- Configurable message queue strategies (e.g., FIFO).
+- MQTT-based sink with automatic reconnection and OIDC authentication.
+- Graceful shutdown handling for clean exits.
+
+This demo sends two `UserDetailsMessage` events, simulating real-time user data collection, and showcases the SDK's
+lifecycle: initialization, event sending, and shutdown.
 """
 
 import time
 import uuid
+from typing import Optional
 
 from loguru import logger
 
 from stellanow_sdk_python.message_queue.message_queue import StellaNowMessageQueue
-from stellanow_sdk_python.message_queue.message_queue_strategy.fifo_messsage_queue_strategy import (
-    FifoMessageQueueStrategy,
-)
 from stellanow_sdk_python.message_queue.message_queue_strategy.i_message_queue_strategy import IMessageQueueStrategy
 from stellanow_sdk_python.messages.message_wrapper import StellaNowMessageWrapper
 from stellanow_sdk_python.settings import ORGANIZATION_ID, PROJECT_ID
@@ -36,8 +51,8 @@ from stellanow_sdk_python.sinks.i_stellanow_sink import IStellaNowSink
 
 
 class StellaNowSDK:
-    def __init__(self, sink: IStellaNowSink, queue_strategy: IMessageQueueStrategy = None):
-        self.queue_strategy = queue_strategy or FifoMessageQueueStrategy()
+    def __init__(self, sink: IStellaNowSink, queue_strategy: IMessageQueueStrategy):
+        self.queue_strategy = queue_strategy
         self.message_queue = StellaNowMessageQueue(strategy=self.queue_strategy, sink=sink)
         self.sink = sink
 
@@ -61,7 +76,7 @@ class StellaNowSDK:
         )
         self.message_queue.enqueue(wrapped_message.model_dump_json())
 
-    def wait_for_queue_to_empty(self, timeout: float = None):
+    def wait_for_queue_to_empty(self, timeout: Optional[float] = None):
         """
         Waits for the message message_queue to be empty before proceeding.
         :param timeout: Maximum time to wait (in seconds). If None, waits indefinitely.

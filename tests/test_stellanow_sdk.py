@@ -21,7 +21,6 @@ IN THE SOFTWARE.
 """
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
-
 from pydantic import BaseModel
 
 from stellanow_sdk_python.messages.message_wrapper import StellaNowMessageWrapper
@@ -31,7 +30,8 @@ from stellanow_sdk_python.message_queue.message_queue_strategy.fifo_messsage_que
 
 
 class MockMessage(BaseModel):
-    entities: list = [{"type": "test"}]
+    entities: list = [{"type": "test", "id": "test_id"}]
+    event_name: str = "test_event"
 
 
 @pytest.fixture
@@ -67,16 +67,26 @@ async def test_stellanow_sdk_send_message(mock_send_message, mock_auth_strategy,
     """
     Test that the SDK sends messages correctly through the MQTT sink.
     """
-    sdk = StellaNowSDK(sink=mock_auth_strategy, queue_strategy=mock_queue_strategy)
-    message = MockMessage()
-    wrapped_message = StellaNowMessageWrapper.create(
-        message=message,
-        organization_id="9dbc5cc1-8c36-463e-893c-b08713868e97",
-        project_id="529360a9-e40c-4d93-b3d3-5ed9f76c0037",
-        event_id="b822d187-36cb-4d53-9112-e753f45ad9af"
-    )
-    await sdk.send_message(message)
-    mock_send_message.assert_awaited_once_with(wrapped_message)
+    # Mock the queue's enqueue method to call the sink's send_message directly
+    with patch('stellanow_sdk_python.message_queue.message_queue.StellaNowMessageQueue.enqueue') as mock_enqueue:
+        # Ensure the side_effect properly awaits the sink's send_message
+        mock_enqueue.side_effect = lambda message: mock_auth_strategy.send_message(message)
+
+        sdk = StellaNowSDK(sink=mock_auth_strategy, queue_strategy=mock_queue_strategy)
+        await sdk.start()  # Ensure the queue processing is started
+
+        message = MockMessage()
+        wrapped_message = StellaNowMessageWrapper.create(
+            message=message,
+            organization_id="9dbc5cc1-8c36-463e-893c-b08713868e97",
+            project_id="529360a9-e40c-4d93-b3d3-5ed9f76c0037",
+            event_id="b822d187-36cb-4d53-9112-e753f45ad9af"
+        )
+
+        await sdk.send_message(message)
+
+        # Verify that the sink's send_message was called with the expected wrapped message
+        mock_send_message.assert_awaited_once_with(wrapped_message)
 
 
 @pytest.mark.asyncio

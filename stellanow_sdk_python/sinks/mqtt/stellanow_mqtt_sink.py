@@ -45,11 +45,15 @@ class StellaNowMqttSink(IStellaNowSink):
         )
         self.is_connected = asyncio.Event()
         self.reconnect_attempts = 0
+        self._shutdown = False
 
     async def connect(self) -> None:
         """
         Connects to the MQTT broker.
         """
+        if self._shutdown:
+            logger.info("Shutdown requested, skipping connection attempt.")
+            return
         try:
             # Authenticate the MQTT client using the configured strategy
             await self.auth_strategy.authenticate(self.client)
@@ -65,20 +69,20 @@ class StellaNowMqttSink(IStellaNowSink):
 
             # Wait until connected
             await self.wait_for_connection()
-
         except Exception as e:
             logger.error(f"Unexpected error during MQTT connection: {e}")
-            await self.handle_connection_error(e)
+            if not self._shutdown:
+                await self.handle_connection_error(e)
 
     async def disconnect(self) -> None:
         """
         Disconnects from the MQTT broker.
         """
         logger.info("Disconnecting from MQTT broker...")
+        self._shutdown = True  # Stop retries
         self.client.loop_stop()
         self.client.disconnect()
         self.is_connected.clear()
-        logger.info("Disconnected from MQTT broker.")
 
     async def send_message(self, message: str) -> None:
         """
@@ -116,8 +120,14 @@ class StellaNowMqttSink(IStellaNowSink):
     def on_disconnect(self, client, userdata, reason_code, properties, x):  # noqa
         logger.warning("Disconnected from MQTT broker")
         self.is_connected.clear()
-        if reason_code != mqtt.MQTT_ERR_SUCCESS:
-            asyncio.run(self.handle_connection_error(reason_code))
+        self.client.disconnect()
+        if reason_code == mqtt.MQTT_ERR_CONN_LOST:
+            logger.error("Unexpected disconnection.")
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                loop.create_task(self.handle_connection_error(reason_code))
+            else:
+                asyncio.run(self.handle_connection_error(reason_code))
 
     def on_publish(self, client, userdata, mid, reason_code, properties):  # noqa
         """
@@ -142,7 +152,10 @@ class StellaNowMqttSink(IStellaNowSink):
 
         logger.info(f"Retrying connection in {backoff} seconds...")
         await asyncio.sleep(backoff)
-        await self.connect()
+        if not self._shutdown:
+            await self.connect()
+        else:
+            logger.info("Shutdown detected, aborting retry.")
 
     async def handle_publish_error(self, error):
         """

@@ -80,7 +80,6 @@ class StellaNowMessageQueue:
         """
         try:
             await self.sink.send_message(message)
-            logger.info(f"Message sent to sink: {message}")
         except Exception as e:
             logger.error(f"Failed to send message to sink: {e}")
 

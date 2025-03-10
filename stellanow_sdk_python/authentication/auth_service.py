@@ -59,10 +59,18 @@ class StellaNowAuthenticationService:
                 logger.info("Authentication successful!")
                 return self.token_response["access_token"]
             except KeycloakError as e:
-                logger.error(f"Keycloak authentication error: {e}")
+                error_status = getattr(e, "response_code", "Unknown")
+                error_message = (
+                    getattr(e, "error_message", str(e)).splitlines()[0] if hasattr(e, "error_message") else str(e)[:100]
+                )
+                logger.error(f"Keycloak authentication failed: {error_status} - {error_message}")
+                logger.debug(f"Full Keycloak error details: {e}")
+                if error_status == 403 and "Cloudflare" in str(e):
+                    logger.warning("Access denied by Cloudflare - check VPN or IP restrictions")
                 raise Exception("Failed to authenticate with Keycloak")
 
-    def _calculate_token_expires_time(self, token_response):
+    @staticmethod
+    def _calculate_token_expires_time(token_response):
         token_expires_time = datetime.now() + timedelta(seconds=token_response.get("expires_in", 60))
         return token_expires_time - timedelta(seconds=10)  # 10 seconds buffer
 
