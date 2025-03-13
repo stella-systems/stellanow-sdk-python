@@ -38,7 +38,6 @@ lifecycle: initialization, event sending, and shutdown.
 """
 
 import time
-import uuid
 from typing import Optional
 
 from loguru import logger
@@ -46,6 +45,7 @@ from loguru import logger
 from stellanow_sdk_python.config.stellanow_config import StellaProjectInfo
 from stellanow_sdk_python.message_queue.message_queue import StellaNowMessageQueue
 from stellanow_sdk_python.message_queue.message_queue_strategy.i_message_queue_strategy import IMessageQueueStrategy
+from stellanow_sdk_python.messages.message_base import StellaNowMessageBase
 from stellanow_sdk_python.messages.message_wrapper import StellaNowMessageWrapper
 from stellanow_sdk_python.sinks.i_stellanow_sink import IStellaNowSink
 
@@ -64,7 +64,7 @@ class StellaNowSDK:
         await self.sink.connect()
         self.message_queue.start_processing()
 
-    async def send_message(self, message):
+    async def send_message(self, message: StellaNowMessageBase):
         """
         Sends a message through the sink.
         :param message: The message to send.
@@ -73,9 +73,8 @@ class StellaNowSDK:
             message=message,
             organization_id=self.project_info.organization_id,
             project_id=self.project_info.project_id,
-            event_id=str(uuid.uuid4()),
         )
-        self.message_queue.enqueue(wrapped_message.model_dump_json())
+        self.message_queue.enqueue(wrapped_message)
 
     def wait_for_queue_to_empty(self, timeout: Optional[float] = None):
         """

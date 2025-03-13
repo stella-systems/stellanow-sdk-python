@@ -40,7 +40,7 @@ class StellaNowCredentials:
     ):
         self.oidc_username = oidc_username
         self.oidc_password = oidc_password
-        self.oidc_client_id = oidc_client_id if oidc_client_id else self.DEFAULT_OIDC_CLIENT_ID
+        self.oidc_client_id = oidc_client_id
         self.mqtt_username = mqtt_username
         self.mqtt_password = mqtt_password
 
@@ -57,8 +57,8 @@ def credentials_from_env(auth_strategy: str = "oidc") -> StellaNowCredentials:
     """
     if auth_strategy == "oidc":
         return StellaNowCredentials(
-            oidc_username=read_env("STELLA_USERNAME"),
-            oidc_password=read_env("STELLA_PASSWORD"),
+            oidc_username=read_env("OIDC_USERNAME"),
+            oidc_password=read_env("OIDC_PASSWORD"),
             oidc_client_id=read_env("OIDC_CLIENT_ID", StellaNowCredentials.DEFAULT_OIDC_CLIENT_ID),
         )
     elif auth_strategy == "username_password":

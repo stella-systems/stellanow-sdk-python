@@ -37,24 +37,24 @@ def create_auth_strategy(
     """
     if auth_type == "oidc":
         if not (credentials.oidc_username and credentials.oidc_password and credentials.oidc_client_id):
-            raise ValueError("OIDC requires STELLA_USERNAME, STELLA_PASSWORD, and OIDC_CLIENT_ID")
-        auth_strategy = OidcMqttAuthStrategy(StellaNowAuthenticationService(project_info, credentials, env_config))
+            raise ValueError("OIDC requires OIDC_USERNAME, OIDC_PASSWORD, and OIDC_CLIENT_ID")
+        oidc_auth_strategy = OidcMqttAuthStrategy(StellaNowAuthenticationService(project_info, credentials, env_config))
         logger.info(
             f"Loaded OIDC credentials - Username: {credentials.oidc_username}, Client ID: {credentials.oidc_client_id}"
         )
-        return auth_strategy
+        return oidc_auth_strategy
 
     elif auth_type == "username_password":
         if not (credentials.mqtt_username and credentials.mqtt_password):
             raise ValueError("Username/password auth requires MQTT_USERNAME and MQTT_PASSWORD")
-        auth_strategy = UserPassAuthMqttAuthStrategy(credentials.mqtt_username, credentials.mqtt_password)
+        user_pass_auth_strategy = UserPassAuthMqttAuthStrategy(credentials.mqtt_username, credentials.mqtt_password)
         logger.info(f"Loaded username/password credentials - Username: {credentials.mqtt_username}")
-        return auth_strategy
+        return user_pass_auth_strategy
 
     elif auth_type == "none":
-        auth_strategy = NoAuthMqttAuthStrategy()
+        no_auth_strategy = NoAuthMqttAuthStrategy()
         logger.info("Using no-auth strategy - no credentials required")
-        return auth_strategy
+        return no_auth_strategy
 
     else:
         raise ValueError(f"Unsupported auth strategy: {auth_type}")

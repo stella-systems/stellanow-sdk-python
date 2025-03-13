@@ -22,11 +22,16 @@
 # import pytest
 # from unittest.mock import AsyncMock, patch, MagicMock
 # from pydantic import BaseModel
-#
+# import os
+# from stellanow_sdk_python.config.stellanow_config import project_info_from_env
 # from stellanow_sdk_python.messages.message_wrapper import StellaNowMessageWrapper
 # from stellanow_sdk_python.sdk import StellaNowSDK
 # from stellanow_sdk_python.sinks.i_stellanow_sink import IStellaNowSink
 # from stellanow_sdk_python.message_queue.message_queue_strategy.fifo_messsage_queue_strategy import FifoMessageQueueStrategy
+#
+#
+# os.environ["ORGANIZATION_ID"] = "1f40a798-edad-4b51-a41e-178c69491293"
+# os.environ["PROJECT_ID"] = "1c2825c5-6870-4543-9939-8dccbc7918c4"
 #
 #
 # class MockMessage(BaseModel):
@@ -56,7 +61,8 @@
 #     """
 #     Test that the SDK starts correctly and connects to the MQTT sink.
 #     """
-#     sdk = StellaNowSDK(sink=mock_auth_strategy, queue_strategy=mock_queue_strategy)
+#     project_info = project_info_from_env()
+#     sdk = StellaNowSDK(sink=mock_auth_strategy, queue_strategy=mock_queue_strategy, project_info=project_info)
 #     await sdk.start()
 #     mock_connect.assert_awaited_once()
 #
@@ -80,7 +86,6 @@
 #             message=message,
 #             organization_id="9dbc5cc1-8c36-463e-893c-b08713868e97",
 #             project_id="529360a9-e40c-4d93-b3d3-5ed9f76c0037",
-#             event_id="b822d187-36cb-4d53-9112-e753f45ad9af"
 #         )
 #
 #         await sdk.send_message(message)

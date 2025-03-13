@@ -41,12 +41,11 @@ class OidcMqttAuthStrategy(IMqttAuthStrategy):
         try:
             access_token = await self.auth_service.get_access_token()
             client.username_pw_set(access_token, password=None)
-            client.tls_set()
-            logger.info("OIDC authentication successful.")
+
         except Exception as e:
             logger.error(f"OIDC authentication failed: {e}")
             raise Exception("Failed to authenticate MQTT client using OIDC.")
 
     def get_required_env_vars(self) -> list[str]:
         """Return required environment variables for OIDC authentication."""
-        return ["STELLA_USERNAME", "STELLA_PASSWORD", "CLIENT_ID"]
+        return ["OIDC_USERNAME", "OIDC_PASSWORD", "CLIENT_ID"]

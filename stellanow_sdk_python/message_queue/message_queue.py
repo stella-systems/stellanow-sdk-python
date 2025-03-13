@@ -24,6 +24,7 @@ import asyncio
 
 from loguru import logger
 
+from stellanow_sdk_python.messages.message_wrapper import StellaNowMessageWrapper
 from stellanow_sdk_python.message_queue.message_queue_strategy.i_message_queue_strategy import IMessageQueueStrategy
 from stellanow_sdk_python.sinks.i_stellanow_sink import IStellaNowSink
 
@@ -67,10 +68,11 @@ class StellaNowMessageQueue:
                     self._task = None
             logger.info("Message queue processing stopped.")
 
-    def enqueue(self, message: str):
+    def enqueue(self, message: StellaNowMessageWrapper):
         """Add a message to the queue."""
         self.strategy.enqueue(message)
-        logger.info(f"Message queued: {message}")
+        logger.info(f"Message queued with messageId:{message.message_id}")
+        logger.debug(f"Message queued: {message}")
 
     async def _process_queue(self):
         """Process the queue asynchronously using the existing event loop."""

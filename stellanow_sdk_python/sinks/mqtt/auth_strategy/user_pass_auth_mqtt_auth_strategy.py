@@ -48,9 +48,7 @@ class UserPassAuthMqttAuthStrategy(IMqttAuthStrategy):
 
         try:
             client.username_pw_set(self.username, self.password)
-            client.tls_set()
 
-            logger.info("Username/password authentication successful.")
         except Exception as e:
             logger.error(f"Username/password authentication failed: {e}")
             raise Exception("Failed to authenticate MQTT client using username/password.")

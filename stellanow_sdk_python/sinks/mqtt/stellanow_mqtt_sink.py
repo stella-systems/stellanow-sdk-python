@@ -27,6 +27,7 @@ from loguru import logger
 
 from stellanow_sdk_python.config.eniviroment_config.stellanow_env_config import StellaNowEnvironmentConfig
 from stellanow_sdk_python.config.stellanow_config import StellaProjectInfo
+from stellanow_sdk_python.messages.message_wrapper import StellaNowMessageWrapper
 from stellanow_sdk_python.sinks.i_stellanow_sink import IStellaNowSink
 from stellanow_sdk_python.sinks.mqtt.auth_strategy.i_mqtt_auth_strategy import IMqttAuthStrategy
 from stellanow_sdk_python.sinks.mqtt.auth_strategy.oidc_mqtt_auth_strategy import OidcMqttAuthStrategy
@@ -38,20 +39,26 @@ class StellaNowMqttSink(IStellaNowSink):
     """
 
     def __init__(
-        self, auth_strategy: IMqttAuthStrategy, env_config: StellaNowEnvironmentConfig, project_info: StellaProjectInfo
+        self,
+        auth_strategy: IMqttAuthStrategy,
+        env_config: StellaNowEnvironmentConfig,
+        project_info: StellaProjectInfo,
     ):
         self.auth_strategy = auth_strategy
         self.env_config = env_config
         self.project_info = project_info
+        self.default_qos = 1
         self.client = mqtt.Client(
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2,  # noqa
             transport="websockets",
             protocol=mqtt.MQTTv5,
             client_id="StellaNowSDKPython",  # noqa
         )
+        self.client.tls_set()
         self.is_connected = asyncio.Event()
         self.reconnect_attempts = 0
         self._shutdown = False
+        self._loop = asyncio.get_event_loop()
 
     async def connect(self) -> None:
         """
@@ -68,7 +75,6 @@ class StellaNowMqttSink(IStellaNowSink):
             await self.auth_strategy.authenticate(self.client)
             self.client.on_connect = self.on_connect
             self.client.on_disconnect = self.on_disconnect
-            self.client.on_publish = self.on_publish
             logger.info("Connecting to MQTT broker...")
             # TODO Add port to env_config
             self.client.connect(self.env_config.broker_url, 8083, 60)
@@ -91,23 +97,25 @@ class StellaNowMqttSink(IStellaNowSink):
         self.client.disconnect()
         self.is_connected.clear()
 
-    async def send_message(self, message: str) -> None:
+    async def send_message(self, message: StellaNowMessageWrapper) -> None:
         """
-        Sends a message to the MQTT broker.
+        Sends a message to the MQTT broker with specified QoS.
+
         :param message: The message to send.
         """
         if not self.is_connected.is_set():
             raise Exception("MQTT sink is not connected.")
-
         await self.wait_for_connection()
+
         mqtt_topic = f"in/{self.project_info.organization_id}"
-        result = self.client.publish(mqtt_topic, message)
+
+        result = self.client.publish(mqtt_topic, message.model_dump_json(), qos=self.default_qos)
         status = result.rc
 
         if status == mqtt.MQTT_ERR_SUCCESS:
-            logger.info(f"Message sent: {message}")
+            logger.success(f"Message sent with messageId:{message.message_id}")
         else:
-            logger.error(f"Failed to send message. Status: {status}")
+            logger.error(f"Failed to send message with messageId:{message.message_id}. Status: {status}")
             await self.handle_publish_error(status)
 
     def is_connected(self) -> bool:
@@ -124,6 +132,10 @@ class StellaNowMqttSink(IStellaNowSink):
             self.reconnect_attempts = 0
         else:
             logger.error(f"Connection failed with code {reason_code}")
+            self.is_connected.clear()  # Ensure flag reflects failure
+            if not self._shutdown:
+                asyncio.run_coroutine_threadsafe(self.handle_connection_error(f"Connection failed: {reason_code}"),
+                                                 self._loop)
 
     def on_disconnect(self, client, userdata, reason_code, properties, x):  # noqa
         logger.warning("Disconnected from MQTT broker")
@@ -136,15 +148,6 @@ class StellaNowMqttSink(IStellaNowSink):
                 loop.create_task(self.handle_connection_error(reason_code))
             else:
                 asyncio.run(self.handle_connection_error(reason_code))
-
-    def on_publish(self, client, userdata, mid, reason_code, properties):  # noqa
-        """Callback when a message is published."""
-        if reason_code == mqtt.MQTT_ERR_SUCCESS:
-            logger.success(f"Message published successfully with mid: {mid}")
-        else:
-            logger.error(f"Failed to publish message with mid: {mid}, reason_code: {reason_code}")
-            if not self._shutdown:
-                asyncio.create_task(self.handle_publish_error(reason_code))
 
     async def wait_for_connection(self):
         """

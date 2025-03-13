@@ -101,7 +101,7 @@ def configure_dev_oidc_mqtt_fifo_sdk() -> StellaNowSDK:
     return configure_sdk(auth_strategy_type="oidc", env_config=EnvConfig.stellanow_dev(), queue_strategy_type="fifo")
 
 
-def configure_dev_username_mqtt_lifo_sdk() -> StellaNowSDK:
+def configure_dev_username_password_mqtt_lifo_sdk() -> StellaNowSDK:
     """Configure SDK for stellanow_dev env with username/password auth, MQTT sink, and LIFO queue."""
     return configure_sdk(
         auth_strategy_type="username_password", env_config=EnvConfig.stellanow_dev(), queue_strategy_type="fifo"

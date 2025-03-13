@@ -42,8 +42,13 @@ class StellaNowMessageWrapper(BaseModel):
     key: Dict[str, str]
     value: Dict[str, Any]
 
+    @property
+    def message_id(self) -> str:
+        """Safely extract messageId from value.metadata."""
+        return self.value.get("metadata", {}).get("messageId", "unknown")
+
     @classmethod
-    def create(cls, message: StellaNowMessageBase, organization_id: str, project_id: str, event_id: str):
+    def create(cls, message: StellaNowMessageBase, organization_id: str, project_id: str):
         entity_ids = [entity["type"] + "EntityId" for entity in message.entities]
         exclude_payload_fields = {"event_name", "entities"}.union(set(entity_ids))
 
@@ -63,7 +68,12 @@ class StellaNowMessageWrapper(BaseModel):
             ],
         )
         return cls(
-            key={"organizationId": organization_id, "projectId": project_id, "eventId": event_id},
+            key={
+                "organizationId": organization_id,
+                "projectId": project_id,
+                "entityId": message.entities[0]["id"],
+                "entityTypeDefinitionId": message.entities[0]["type"],
+            },
             value={
                 "metadata": metadata.model_dump(),
                 "payload": payload_json,

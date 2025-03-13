@@ -22,6 +22,8 @@ IN THE SOFTWARE.
 
 from abc import ABC, abstractmethod
 
+from stellanow_sdk_python.messages.message_wrapper import StellaNowMessageWrapper
+
 
 class IStellaNowSink(ABC):
     """
@@ -41,7 +43,7 @@ class IStellaNowSink(ABC):
         """
 
     @abstractmethod
-    async def send_message(self, message: str) -> None:
+    async def send_message(self, message: StellaNowMessageWrapper) -> None:
         """
         Sends a message to the sink.
         :param message: The message to send.
