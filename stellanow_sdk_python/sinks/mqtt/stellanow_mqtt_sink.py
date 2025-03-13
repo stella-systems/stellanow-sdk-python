@@ -134,8 +134,9 @@ class StellaNowMqttSink(IStellaNowSink):
             logger.error(f"Connection failed with code {reason_code}")
             self.is_connected.clear()  # Ensure flag reflects failure
             if not self._shutdown:
-                asyncio.run_coroutine_threadsafe(self.handle_connection_error(f"Connection failed: {reason_code}"),
-                                                 self._loop)
+                asyncio.run_coroutine_threadsafe(
+                    self.handle_connection_error(f"Connection failed: {reason_code}"), self._loop
+                )
 
     def on_disconnect(self, client, userdata, reason_code, properties, x):  # noqa
         logger.warning("Disconnected from MQTT broker")
