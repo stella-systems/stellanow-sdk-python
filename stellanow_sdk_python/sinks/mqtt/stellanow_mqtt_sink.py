@@ -24,6 +24,7 @@ import asyncio
 
 import paho.mqtt.client as mqtt
 from loguru import logger
+from nanoid import generate
 
 from stellanow_sdk_python.config.eniviroment_config.stellanow_env_config import StellaNowEnvironmentConfig
 from stellanow_sdk_python.config.stellanow_config import StellaProjectInfo
@@ -48,13 +49,14 @@ class StellaNowMqttSink(IStellaNowSink):
         self.env_config = env_config
         self.project_info = project_info
         self.default_qos = 1
-
+        self.client_id = f"StellaNowSDKPython_{generate(size=10)}"
         # Extract MQTT config from parsed URL
         mqtt_config = env_config.mqtt_url_config
+
         self.client = mqtt.Client(
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2,  # noqa
             transport=mqtt_config.transport,  # Use parsed transport ("tcp" or "websockets")
-            client_id="StellaNowSDKPython",
+            client_id=self.client_id,
         )
         if mqtt_config.use_tls:
             self.client.tls_set()  # Enable TLS for mqtts or wss
@@ -64,6 +66,8 @@ class StellaNowMqttSink(IStellaNowSink):
         self._shutdown = False
         self._loop = asyncio.get_event_loop()
 
+        logger.info(f'SDK Client ID is "{self.client_id}"')
+
     async def connect(self) -> None:
         """
         Connects to the MQTT broker.
@@ -72,7 +76,6 @@ class StellaNowMqttSink(IStellaNowSink):
             logger.info("Shutdown requested, skipping connection attempt.")
             return
         try:
-            # TODO Check if 'start_refresh_task' is valid
             # Start token refresh if using OIDC
             # if isinstance(self.auth_strategy, OidcMqttAuthStrategy):
             #     await self.auth_strategy.auth_service.start_refresh_task()

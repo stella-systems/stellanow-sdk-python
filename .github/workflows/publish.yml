@@ -50,6 +50,7 @@ jobs:
           poetry run ./ci/025_ruff.sh check
           poetry run ./ci/030_black.sh check
           poetry run ./ci/040_isort.sh check
+          poetry run ./ci/050_mypy.sh check
 
       - name: Test with pytest
         run: poetry run pytest
