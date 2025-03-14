@@ -23,36 +23,20 @@ IN THE SOFTWARE.
 import paho.mqtt.client as mqtt
 from loguru import logger
 
+from stellanow_sdk_python.config.stellanow_auth_credentials import StellaNowCredentials
 from stellanow_sdk_python.sinks.mqtt.auth_strategy.i_mqtt_auth_strategy import IMqttAuthStrategy
 
 
 class UserPassAuthMqttAuthStrategy(IMqttAuthStrategy):
-    """
-    Username/password authentication strategy for MQTT connections.
-    """
+    """Username/password authentication strategy for MQTT connections."""
 
-    def __init__(self, username: str, password: str):
-        """
-        Authentication strategy using a simple username and password.
-        :param username: The username for MQTT authentication.
-        :param password: The password for MQTT authentication.
-        """
-        self.username = username
-        self.password = password
+    def __init__(self, credentials: StellaNowCredentials):
+        self.credentials = credentials
 
     async def authenticate(self, client: mqtt.Client) -> None:
-        """
-        Authenticates the MQTT client using a username and password.
-        """
         logger.info("Authenticating MQTT client using username/password.")
-
         try:
-            client.username_pw_set(self.username, self.password)
-
+            client.username_pw_set(self.credentials.username, self.credentials.password)
         except Exception as e:
             logger.error(f"Username/password authentication failed: {e}")
             raise Exception("Failed to authenticate MQTT client using username/password.")
-
-    def get_required_env_vars(self) -> list[str]:
-        """Return required environment variables for username/password authentication."""
-        return ["MQTT_USERNAME", "MQTT_PASSWORD"]

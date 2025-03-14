@@ -30,8 +30,15 @@ from stellanow_sdk_python.sinks.mqtt.auth_strategy.i_mqtt_auth_strategy import I
 class OidcMqttAuthStrategy(IMqttAuthStrategy):
     """Authentication strategy using OpenID Connect (OIDC)."""
 
-    def __init__(self, auth_service: StellaNowAuthenticationService):
-        self.auth_service = auth_service
+    def __init__(self, project_info, credentials, env_config):
+        self.project_info = project_info
+        self.credentials = credentials
+        self.env_config = env_config
+        self.auth_service = StellaNowAuthenticationService(
+            project_info=self.project_info,
+            credentials=self.credentials,
+            env_config=self.env_config,
+        )
 
     async def authenticate(self, client: mqtt.Client) -> None:
         """
@@ -41,11 +48,6 @@ class OidcMqttAuthStrategy(IMqttAuthStrategy):
         try:
             access_token = await self.auth_service.get_access_token()
             client.username_pw_set(access_token, password=None)
-
         except Exception as e:
             logger.error(f"OIDC authentication failed: {e}")
             raise Exception("Failed to authenticate MQTT client using OIDC.")
-
-    def get_required_env_vars(self) -> list[str]:
-        """Return required environment variables for OIDC authentication."""
-        return ["OIDC_USERNAME", "OIDC_PASSWORD", "CLIENT_ID"]

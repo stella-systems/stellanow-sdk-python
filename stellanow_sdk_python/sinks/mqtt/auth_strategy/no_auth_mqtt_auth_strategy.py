@@ -27,16 +27,7 @@ from stellanow_sdk_python.sinks.mqtt.auth_strategy.i_mqtt_auth_strategy import I
 
 
 class NoAuthMqttAuthStrategy(IMqttAuthStrategy):
-    """
-    No authentication strategy for MQTT connections.
-    """
+    """No authentication strategy for MQTT connections."""
 
     async def authenticate(self, client: mqtt.Client) -> None:
-        """
-        No authentication is performed.
-        """
         logger.info("Using NoAuth strategy for MQTT connection.")
-
-    def get_required_env_vars(self) -> list[str]:
-        """Return required environment variables for no-auth (none)."""
-        return []  # No auth-specific variables needed

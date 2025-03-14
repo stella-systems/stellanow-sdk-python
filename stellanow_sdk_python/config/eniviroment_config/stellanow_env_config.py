@@ -20,26 +20,24 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 """
 
-from typing import Protocol
+from typing import Optional, Protocol
+
+from stellanow_sdk_python.sinks.mqtt.utils.mqtt_url_parser import MqttUrlConfig, parse_mqtt_url
 
 
 class StellaNowEnvironmentConfig(Protocol):
-    """Protocol defining the structure of environment configuration."""
-
-    api_base_url: str
-    broker_url: str
+    mqtt_url_config: MqttUrlConfig
+    api_base_url: Optional[str] = None
 
     @property
     def authority(self) -> str:
-        """The authority URL derived from api_base_url."""
+        pass
 
 
 class _StellaNowEnvironmentConfigImpl:
-    """Implementation of StellaNowEnvironmentConfig."""
-
-    def __init__(self, api_base_url: str, broker_url: str):
+    def __init__(self, mqtt_url: str, api_base_url: Optional[str] = None):
+        self.mqtt_url_config = parse_mqtt_url(mqtt_url)
         self.api_base_url = api_base_url
-        self.broker_url = broker_url
 
     @property
     def authority(self) -> str:
@@ -53,17 +51,24 @@ class EnvConfig:
     def stellanow_prod() -> StellaNowEnvironmentConfig:
         """Configuration for the StellaNow production environment."""
         return _StellaNowEnvironmentConfigImpl(
-            api_base_url="https://api.prod.stella.cloud", broker_url="ingestor.prod.stella.cloud"
+            mqtt_url="wss://ingestor.prod.stella.cloud:8083",
+            api_base_url="https://api.prod.stella.cloud",
         )
 
     @staticmethod
     def stellanow_dev() -> StellaNowEnvironmentConfig:
         """Configuration for the StellaNow dev environment."""
         return _StellaNowEnvironmentConfigImpl(
-            api_base_url="https://api.dev.stella.cloud", broker_url="ingestor.dev.stella.cloud"
+            mqtt_url="wss://ingestor.dev.stella.cloud:8083",
+            api_base_url="https://api.dev.stella.cloud",
         )
+
+    @staticmethod
+    def nanomq_local() -> StellaNowEnvironmentConfig:
+        """Configuration for the NanoMq local environment."""
+        return _StellaNowEnvironmentConfigImpl(mqtt_url="mqtt-tcp://localhost:1883")
 
     @staticmethod
     def create_custom_env(api_base_url: str, mqtt_broker_url: str) -> StellaNowEnvironmentConfig:
         """Create a custom environment configuration."""
-        return _StellaNowEnvironmentConfigImpl(api_base_url=api_base_url, broker_url=mqtt_broker_url)
+        return _StellaNowEnvironmentConfigImpl(api_base_url=api_base_url, mqtt_url=mqtt_broker_url)

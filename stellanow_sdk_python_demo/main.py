@@ -25,12 +25,12 @@ StellaNow SDK Python Demo
 
 This script demonstrates the usage of the StellaNow SDK for Python, a powerful tool for real-time analytics.
 The SDK enables developers to send event data (e.g., user details) to a StellaNow backend via a message queue and
-MQTT sink, with support for secure authentication using OpenID Connect (OIDC).
+MQTT sink, with support for secure authentication using Username and Password.
 
 Key Features:
 - Asynchronous event sending for non-blocking performance.
 - Configurable message queue strategies (e.g., FIFO).
-- MQTT-based sink with automatic reconnection and OIDC authentication.
+- MQTT-based sink with automatic reconnection and Username/Password authentication.
 - Graceful shutdown handling for clean exits.
 
 This demo sends two `UserDetailsMessage` events, simulating real-time user data collection, and showcases the SDK's
@@ -42,18 +42,14 @@ import sys
 
 from loguru import logger
 
-from stellanow_sdk_python.configure_sdk import configure_dev_username_password_mqtt_lifo_sdk
+from stellanow_sdk_python.configure_sdk import configure_local_nanomq_username_password_mqtt_lifo_sdk
 from models.phone_number_model import PhoneNumberModel
 from user_details_message import UserDetailsMessage
-
-from stellanow_sdk_python.configure_sdk import configure_dev_oidc_mqtt_fifo_sdk
 
 
 async def main():
     """Main entry point for the StellaNow SDK demo."""
-    # Use pre-defined dev config with OIDC, MQTT, and FIFO
-    # sdk = configure_dev_oidc_mqtt_fifo_sdk()
-    sdk = configure_dev_username_password_mqtt_lifo_sdk()
+    sdk = configure_local_nanomq_username_password_mqtt_lifo_sdk()
     try:
         # Start the SDK
         await sdk.start()
@@ -95,5 +91,5 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         logger.info("Program interrupted by user, exiting cleanly.")
     except Exception as e:
-        logger.error(f"Program terminated with unexpected error: {e}")
+        logger.exception(f"Program terminated with unexpected error: {e}")
         sys.exit(1)

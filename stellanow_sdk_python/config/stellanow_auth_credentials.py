@@ -20,50 +20,87 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 """
 
-from typing import Optional
+import os
+from enum import Enum
+from typing import Dict, Optional
 
-from stellanow_sdk_python.config.stellanow_config import read_env
+from pydantic import BaseModel
+from typing_extensions import TypedDict
 
-
-class StellaNowCredentials:
-    """Holds authentication credentials for the StellaNow SDK."""
-
-    DEFAULT_OIDC_CLIENT_ID = "event-ingestor"
-
-    def __init__(
-        self,
-        oidc_username: Optional[str] = None,
-        oidc_password: Optional[str] = None,
-        oidc_client_id: str = DEFAULT_OIDC_CLIENT_ID,
-        mqtt_username: Optional[str] = None,
-        mqtt_password: Optional[str] = None,
-    ):
-        self.oidc_username = oidc_username
-        self.oidc_password = oidc_password
-        self.oidc_client_id = oidc_client_id
-        self.mqtt_username = mqtt_username
-        self.mqtt_password = mqtt_password
+DEFAULT_OIDC_CLIENT_ID = "event-ingestor"
 
 
-def credentials_from_env(auth_strategy: str = "oidc") -> StellaNowCredentials:
-    """
-    Create a StellaNowCredentials instance from environment variables based on auth strategy.
+class AuthStrategyTypes(Enum):
+    OIDC = "oidc"
+    USERNAME_PASS = "username_password"
+    NO_AUTH = "none"
 
-    Args:
-        auth_strategy (str): The authentication strategy ("oidc", "username_password", "none").
 
-    Returns:
-        StellaNowCredentials: Configured credentials for the specified strategy.
-    """
-    if auth_strategy == "oidc":
-        return StellaNowCredentials(
-            oidc_username=read_env("OIDC_USERNAME"),
-            oidc_password=read_env("OIDC_PASSWORD"),
-            oidc_client_id=read_env("OIDC_CLIENT_ID", StellaNowCredentials.DEFAULT_OIDC_CLIENT_ID),
-        )
-    elif auth_strategy == "username_password":
-        return StellaNowCredentials(mqtt_username=read_env("MQTT_USERNAME"), mqtt_password=read_env("MQTT_PASSWORD"))
-    elif auth_strategy == "none":
-        return StellaNowCredentials()
-    else:
-        raise ValueError(f"Unknown auth strategy: {auth_strategy}")
+class CredentialFieldMapping(TypedDict):
+    """Defines how env vars map to credential fields and whether they're required."""
+
+    env_var: str
+    field: str
+    required: bool
+
+
+# Define config outside the class to avoid Pydantic interference
+STRATEGY_CONFIG: Dict[str, list[CredentialFieldMapping]] = {
+    "oidc": [
+        {"env_var": "OIDC_USERNAME", "field": "username", "required": True},
+        {"env_var": "OIDC_PASSWORD", "field": "password", "required": True},
+        {"env_var": "OIDC_CLIENT_ID", "field": "client_id", "required": False},
+    ],
+    "username_password": [
+        {"env_var": "MQTT_USERNAME", "field": "username", "required": True},
+        {"env_var": "MQTT_PASSWORD", "field": "password", "required": True},
+    ],
+    "none": [],
+}
+
+
+class StellaNowCredentials(BaseModel):
+    username: Optional[str] = None
+    password: Optional[str] = None
+    client_id: Optional[str] = DEFAULT_OIDC_CLIENT_ID
+
+    def is_valid(self, auth_strategy: str) -> bool:
+        """Validate credentials for the given auth strategy."""
+        config = STRATEGY_CONFIG.get(auth_strategy, [])
+        return all(getattr(self, mapping["field"]) is not None for mapping in config if mapping["required"])
+
+    @classmethod
+    def from_env(cls, auth_strategy: str) -> "StellaNowCredentials":
+        """Construct credentials from environment variables based on auth strategy."""
+        config = STRATEGY_CONFIG.get(auth_strategy)
+        if config is None:
+            raise ValueError(f"Unsupported auth strategy: {auth_strategy}")
+
+        env_values = {mapping["env_var"]: os.getenv(mapping["env_var"]) for mapping in config}
+        missing_vars = [
+            mapping["env_var"] for mapping in config if mapping["required"] and not env_values[mapping["env_var"]]
+        ]
+        if missing_vars:
+            raise ValueError(f"Missing required env vars for '{auth_strategy}': {', '.join(missing_vars)}")
+
+        # Use model_fields to get defaults
+        field_defaults = {field_name: field.default for field_name, field in cls.model_fields.items()}
+        kwargs = {
+            mapping["field"]: (
+                env_values[mapping["env_var"]]
+                if env_values[mapping["env_var"]] is not None
+                else field_defaults[mapping["field"]]
+            )
+            for mapping in config
+        }
+        return cls(**kwargs)
+
+    @staticmethod
+    def get_required_env_vars(auth_strategy: str) -> list[str]:
+        """Return required environment variables for the given auth strategy."""
+        config = STRATEGY_CONFIG.get(auth_strategy, [])
+        return [mapping["env_var"] for mapping in config if mapping["required"]]
+
+
+# Backward compatibility
+credentials_from_env = StellaNowCredentials.from_env

@@ -21,6 +21,7 @@ IN THE SOFTWARE.
 """
 
 import asyncio
+from typing import Optional
 
 from loguru import logger
 
@@ -35,7 +36,7 @@ class StellaNowMessageQueue:
         self.strategy = strategy
         self.sink = sink
         self.processing = False
-        self._task = None  # Store the asyncio task
+        self._task: Optional[asyncio.Task] = None  # Store the asyncio task
 
     def start_processing(self):
         """Start processing the queue as an asyncio task."""
@@ -87,7 +88,7 @@ class StellaNowMessageQueue:
                 logger.error(f"Error processing message queue: {e}")
                 await asyncio.sleep(1)  # Back off on error
 
-    async def _send_message_to_sink(self, message: str):
+    async def _send_message_to_sink(self, message: StellaNowMessageWrapper):
         """Send a message to the sink."""
         try:
             await self.sink.send_message(message)

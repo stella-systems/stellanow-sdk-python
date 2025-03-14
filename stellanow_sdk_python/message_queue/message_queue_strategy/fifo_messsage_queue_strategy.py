@@ -26,6 +26,7 @@ from queue import Queue
 from typing import Optional
 
 from stellanow_sdk_python.message_queue.message_queue_strategy.i_message_queue_strategy import IMessageQueueStrategy
+from stellanow_sdk_python.messages.message_wrapper import StellaNowMessageWrapper
 
 
 class FifoMessageQueueStrategy(IMessageQueueStrategy):
@@ -37,11 +38,11 @@ class FifoMessageQueueStrategy(IMessageQueueStrategy):
         self._queue: Queue = queue.Queue()
         self._lock = threading.Lock()
 
-    def enqueue(self, message: str) -> None:
+    def enqueue(self, message: StellaNowMessageWrapper) -> None:
         with self._lock:
             self._queue.put(message)
 
-    def try_dequeue(self) -> Optional[str]:
+    def try_dequeue(self) -> Optional[StellaNowMessageWrapper]:
         with self._lock:
             if not self._queue.empty():
                 return self._queue.get()

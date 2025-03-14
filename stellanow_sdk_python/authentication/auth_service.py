@@ -22,6 +22,7 @@ IN THE SOFTWARE.
 
 import asyncio
 from datetime import datetime, timedelta
+from typing import Any, Dict, Optional
 
 from keycloak import KeycloakOpenID
 from keycloak.exceptions import KeycloakError
@@ -39,16 +40,16 @@ class StellaNowAuthenticationService:
         self.env_config = env_config
         self.keycloak_openid = KeycloakOpenID(
             server_url=env_config.authority,
-            client_id=credentials.oidc_client_id,
+            client_id=credentials.client_id,
             realm_name=project_info.organization_id,
             verify=True,
         )
         self.project_info = project_info
         self.credentials = credentials
-        self.token_response = None
-        self.token_expires = None
+        self.token_response: Optional[Dict[str, Any]] = None
+        self.token_expires: Optional[datetime] = None
         self.lock = asyncio.Lock()
-        self._refresh_task = None
+        self._refresh_task: Optional[asyncio.Task] = None
 
     async def start_refresh_task(self):
         """Start a background task to refresh the token periodically."""
@@ -68,8 +69,8 @@ class StellaNowAuthenticationService:
     async def _auto_refresh(self):
         """Periodically refresh the token before it expires."""
         while True:
-            if self.token_response and not self._is_token_expired():
-                expires_in = (self.token_expires - datetime.now()).total_seconds()
+            if self.token_response and self.token_expires and not self._is_token_expired():
+                expires_in = (self.token_expires - datetime.now()).total_seconds()  # Null check added
                 await asyncio.sleep(max(expires_in - 30, 1))
             else:
                 logger.debug("No valid token to refresh, attempting initial authentication.")
@@ -85,7 +86,7 @@ class StellaNowAuthenticationService:
         async with self.lock:
             try:
                 token_response = await self.keycloak_openid.a_token(
-                    username=self.credentials.oidc_username, password=self.credentials.oidc_password
+                    username=self.credentials.username, password=self.credentials.password
                 )
                 if not isinstance(token_response, dict):
                     logger.error(
@@ -116,13 +117,16 @@ class StellaNowAuthenticationService:
         token_expires_time = datetime.now() + timedelta(seconds=token_response.get("expires_in", 60))
         return token_expires_time - timedelta(seconds=10)
 
-    def _is_token_expired(self):
+    def _is_token_expired(self) -> bool:
+        if self.token_expires is None:
+            return True  # Treat as expired if not set
         return datetime.now() >= self.token_expires
 
     async def get_access_token(self):
         if self.token_response is None or self._is_token_expired():
             logger.info("Token expired or missing. Re-authenticating...")
             return await self.authenticate()
+        assert self.token_response is not None
         return self.token_response["access_token"]
 
     async def refresh_access_token(self):
@@ -136,6 +140,7 @@ class StellaNowAuthenticationService:
                 self.token_response = await self.keycloak_openid.a_refresh_token(refresh_token)
                 self.token_expires = self._calculate_token_expires_time(self.token_response)
                 logger.info("Access token refreshed successfully.")
+                assert self.token_response is not None
                 return self.token_response["access_token"]
             except KeycloakError as e:
                 logger.error(f"Failed to refresh access token: {e}")

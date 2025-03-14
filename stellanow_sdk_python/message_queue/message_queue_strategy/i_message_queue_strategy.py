@@ -21,7 +21,15 @@ IN THE SOFTWARE.
 """
 
 from abc import ABC, abstractmethod
+from enum import Enum
 from typing import Optional
+
+from stellanow_sdk_python.messages.message_wrapper import StellaNowMessageWrapper
+
+
+class MessageQueueType(Enum):
+    FIFO = "fifo"
+    LIFO = "lifo"
 
 
 class IMessageQueueStrategy(ABC):
@@ -30,14 +38,14 @@ class IMessageQueueStrategy(ABC):
     """
 
     @abstractmethod
-    def enqueue(self, message: str) -> None:
+    def enqueue(self, message: StellaNowMessageWrapper) -> None:
         """
         Enqueues the specified message into the message_queue.
-        :param message: The message to be queued.
+        :param message: The message in StellaNowMessageWrapper format to be queued.
         """
 
     @abstractmethod
-    def try_dequeue(self) -> Optional[str]:
+    def try_dequeue(self) -> Optional[StellaNowMessageWrapper]:
         """
         Attempts to dequeue a message from the message_queue.
         :return: The dequeued message if successful; otherwise, None.
