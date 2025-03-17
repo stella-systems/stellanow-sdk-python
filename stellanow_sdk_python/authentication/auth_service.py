@@ -37,6 +37,9 @@ class StellaNowAuthenticationService:
     def __init__(
         self, project_info: StellaProjectInfo, credentials: StellaNowCredentials, env_config: StellaNowEnvironmentConfig
     ):
+        if credentials.client_id is None:
+            raise ValueError("Client ID is not set.")
+
         self.env_config = env_config
         self.keycloak_openid = KeycloakOpenID(
             server_url=env_config.authority,
