@@ -1,69 +1,71 @@
-name: Publish Python Package
+name: Release and Publish
+
 on:
   push:
-    branches: [ develop ]
+    branches:
+      - master
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    env:
-      GITHUB_USERNAME: ${{ secrets.STELLA_GITHUB_PACKAGES_USERNAME }}
-      GITHUB_TOKEN: ${{ secrets.STELLA_GITHUB_PACKAGES_TOKEN }}
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - name: Checkout Code
+        uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
           fetch-depth: 0
-      - name: Setup notifications
-        uses: toko-bifrost/ms-teams-deploy-card@master
-        if: always()
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          webhook-uri: ${{ secrets.MICROSOFT_TEAMS_WEBHOOK_URI }}
-          show-on-start: false
-          card-layout-exit: complete
-          include-files: false
-          custom-facts: |
-            - name: Built version
-              value: ${{ github.event.repository.name }} v${{ env.RELEASE_VERSION }}
+
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: 3.11
-      - name: Install dependencies
+          python-version: '3.11'
+
+      - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pipenv
-          pipenv install --ignore-pipfile --dev --pre
-          pip install build twine
-      - name: Check formatting
+          pip install poetry
+          poetry install --with dev --sync
+
+      - name: Check Formatting
+        run: poetry run poe lint-check
+
+      - name: Run Tests
+        run: poetry run poe test
+
+      - name: Setup Git User
         run: |
-          pipenv run ./ci/010_autoflake.sh check
-          pipenv run ./ci/020_vulture.sh check
-          pipenv run ./ci/025_ruff.sh check
-          pipenv run ./ci/040_isort.sh check
-      - name: Test with pytest
-        run: pipenv run python -m pytest
-      - name: Release version test
-        id: release_version_step
+          git config --global user.email "actions@github.com"
+          git config --global user.name "GitHub Actions"
+
+      - name: Tag Commit
+        run: |
+          VERSION=$(poetry version -s)  # Get version from pyproject.toml
+          git tag -a v$VERSION -m "Release v$VERSION"
+          git push origin v$VERSION
+          echo "VERSION=v$VERSION" >> $GITHUB_ENV
+
+      - name: Check If PreRelease
+        id: PRE_RELEASE
+        run: |
+          echo "PRE_RELEASE=${{ contains(env.VERSION, '-') }}" >> $GITHUB_ENV
         shell: bash
-        run: |
-          VERSION=$(python -c "from stellanow_cli._version import __version__; print(__version__)")
-          echo "RELEASE_VERSION=$VERSION" >> $GITHUB_ENV
-          git tag $VERSION
-      - name: Push tag
-        uses: pkgdeps/git-tag-action@v2
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          github_repo: ${{ github.repository }}
-          git_commit_sha: ${{ github.sha }}
-          version: ${{ env.RELEASE_VERSION }}
-          git_tag_prefix: "v"
-      - name: Build and publish
+
+      - name: Create a New Release
+        id: create_release
+        uses: actions/create-release@v1
         env:
-          TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
-          TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ env.VERSION }}
+          release_name: Release ${{ env.VERSION }}
+          body: |
+            ${{ github.event.head_commit.message }}
+          draft: false
+          prerelease: ${{ env.PRE_RELEASE }}
+
+      - name: Build and Publish
+        env:
+          POETRY_PYPI_TOKEN_PYPI: ${{ secrets.PYPI_TOKEN }}
         run: |
-          python -m build
-          twine upload dist/*
+          poetry build
+          poetry publish
