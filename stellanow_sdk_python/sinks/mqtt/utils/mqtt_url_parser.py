@@ -53,21 +53,24 @@ def parse_mqtt_url(url: str) -> MqttUrlConfig:
 
     # Validate scheme and determine transport/TLS
     scheme = parsed.scheme.lower()
-    transport: Literal["tcp", "websockets"] = "tcp"  # Default transport
-    use_tls = False
+    transport: Literal["tcp", "websockets"]
+    use_tls: bool
 
-    if scheme in ("mqtt", "mqtt-tcp"):
-        transport = "tcp"
-    elif scheme == "mqtts":
-        transport = "tcp"
-        use_tls = True
-    elif scheme == "ws":
-        transport = "websockets"
-    elif scheme == "wss":
-        transport = "websockets"
-        use_tls = True
-    else:
-        raise ValueError(f"Unsupported MQTT scheme: {scheme}. Use 'mqtt', 'mqtt-tcp', 'mqtts', 'ws', or 'wss'.")
+    match scheme:
+        case "mqtt" | "mqtt-tcp":
+            transport = "tcp"
+            use_tls = False
+        case "mqtts":
+            transport = "tcp"
+            use_tls = True
+        case "ws":
+            transport = "websockets"
+            use_tls = False
+        case "wss":
+            transport = "websockets"
+            use_tls = True
+        case _:
+            raise ValueError(f"Unsupported MQTT scheme: {scheme}. Use 'mqtt', 'mqtt-tcp', 'mqtts', 'ws', or 'wss'.")
 
     # Extract hostname
     hostname = parsed.hostname
@@ -75,10 +78,18 @@ def parse_mqtt_url(url: str) -> MqttUrlConfig:
         raise ValueError("No hostname provided in MQTT URL.")
 
     # Extract port (default based on scheme if not provided)
-    port = (
-        parsed.port
-        if parsed.port is not None
-        else (8883 if scheme == "mqtts" else 443 if scheme == "wss" else 80 if scheme == "ws" else 1883)
-    )
+    port = parsed.port
+    if port is None:
+        match scheme:
+            case "mqtts":
+                port = 8883
+            case "wss":
+                port = 443
+            case "ws":
+                port = 80
+            case "mqtt" | "mqtt-tcp":
+                port = 1883
+            case _:
+                raise ValueError(f"No default port defined for scheme: {scheme}")
 
     return MqttUrlConfig(scheme=scheme, hostname=hostname, port=port, transport=transport, use_tls=use_tls)
