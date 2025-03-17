@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - master
-      - feature/STLND-1849-2
 
 jobs:
   deploy:

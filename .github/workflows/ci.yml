@@ -5,7 +5,6 @@ on:
     branches:
       - master
       - develop
-      - feature/STLND-7849-2
 
 jobs:
   build:
