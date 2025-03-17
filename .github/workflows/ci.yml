@@ -1,57 +1,38 @@
-name: Continuous Integration
+name: Build and Test
+
 on:
   pull_request:
-    branches: [develop]
+    branches:
+      - master
+      - develop
+      - feature/STLND-7849-2
+
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      GITHUB_USERNAME: ${{ secrets.STELLA_GITHUB_PACKAGES_USERNAME }}
-      GITHUB_TOKEN: ${{ secrets.STELLA_GITHUB_PACKAGES_TOKEN }}
-      DOCKER_IMAGE_NAME: stellanow/stellanow-sdk-python
+
     strategy:
       fail-fast: false
-    steps:
-      - name: Cancel other workflow runs
-        uses: rokroskar/workflow-run-cleanup-action@v0.2.2
 
-      - name: Checkout code
-        uses: actions/checkout@v3
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Check if remote branch still exists
-        run: git ls-remote --exit-code origin ${{ github.ref }}
-
-      - name: Cancel if remote branch does not exist
-        if: failure()
-        uses: andymckay/cancel-action@0.2
-
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: 3.11
+          python-version: '3.11'
 
-      - name: Install Poetry
+      - name: Install Dependencies
         run: |
-          curl -sSL https://install.python-poetry.org | python3 -
-          echo "${HOME}/.local/bin" >> $GITHUB_PATH
+          python -m pip install --upgrade pip
+          pip install poetry
+          poetry install --with dev --sync
 
-      - name: Install dependencies using Poetry
-        run: poetry install --no-root
+      - name: Check Formatting
+        run: poetry run poe lint-check
 
-      - name: Check formatting
-        run: |
-          poetry run ./ci/010_autoflake.sh check
-          poetry run ./ci/020_vulture.sh check
-          poetry run ./ci/025_ruff.sh check
-          poetry run ./ci/030_black.sh check
-          poetry run ./ci/040_isort.sh check
-          poetry run ./ci/050_mypy.sh check
-
-      - name: Test with pytest
-        run: poetry run pytest
-
-      - name: Container SARIF report
-        if: ${{ success() || failure() }}
-        run: cat ${{ steps.container_scan.outputs.sarif }}
+      - name: Run Tests
+        run: poetry run poe test
