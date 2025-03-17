@@ -83,7 +83,6 @@ class StellaNowCredentials(BaseModel):
         if missing_vars:
             raise ValueError(f"Missing required env vars for '{auth_strategy}': {', '.join(missing_vars)}")
 
-        # Use model_fields to get defaults
         field_defaults = {field_name: field.default for field_name, field in cls.model_fields.items()}
         kwargs = {
             mapping["field"]: (
@@ -93,7 +92,12 @@ class StellaNowCredentials(BaseModel):
             )
             for mapping in config
         }
-        return cls(**kwargs)
+        instance = cls(**kwargs)
+
+        if not instance.is_valid(auth_strategy):
+            raise ValueError(f"Invalid credentials for '{auth_strategy}' after env var mapping")
+
+        return instance
 
     @staticmethod
     def get_required_env_vars(auth_strategy: str) -> list[str]:

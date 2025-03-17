@@ -41,15 +41,16 @@ import asyncio
 import sys
 
 from loguru import logger
+
+from stellanow_sdk_python.configure_sdk import configure_dev_oidc_mqtt_fifo_sdk
+from stellanow_sdk_python.configure_sdk import configure_local_nanomq_username_password_mqtt_lifo_sdk
 from models.phone_number_model import PhoneNumberModel
 from user_details_message import UserDetailsMessage
 
-from stellanow_sdk_python.configure_sdk import configure_local_nanomq_username_password_mqtt_lifo_sdk
-
-
 async def main():
     """Main entry point for the StellaNow SDK demo."""
-    sdk = configure_local_nanomq_username_password_mqtt_lifo_sdk()
+    # sdk = configure_local_nanomq_username_password_mqtt_lifo_sdk()
+    sdk = configure_dev_oidc_mqtt_fifo_sdk()
     try:
         # Start the SDK
         await sdk.start()

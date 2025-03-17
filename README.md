@@ -17,13 +17,24 @@ Before you start integrating the SDK, ensure you have a Stella Now account.
 To integrate the StellaNowSDK into your project, follow these steps:
 
 ### Via pip
-The easiest way to add the StellaNowSDK to your project is through pip, the Python package installer. Run the following command in your terminal:
+The easiest way to add the StellaNowSDK to your project is through pip, the Python package installer. Install the package from PyPI ([stellanow-sdk-python](https://pypi.org/project/stellanow-sdk-python/)) by running the following command in your terminal:
 ```bash
 pip install stellanow-sdk-python
 ```
 
 ## Configuration
 The SDK supports multiple authentication strategies when connecting to the Stella Now MQTT Sink. You can configure the SDK using OIDC authentication, username/password authentication, or no authentication, depending on your environment.
+
+### MQTT Broker URL
+The SDK uses an MQTT URL to connect to the StellaNow Platform or a local broker. The URL scheme dictates the transport and TLS settings:
+
+- mqtt or mqtt-tcp: TCP transport, no TLS (default port: 1883).
+- mqtts: TCP transport with TLS (default port: 8883).
+- ws: WebSockets transport, no TLS (default port: 80).
+- wss: WebSockets transport with TLS (default port: 443).
+
+Each configuration function (e.g., `configure_dev_oidc_mqtt_fifo_sdk`) uses a default URL tailored to its environment (development, production, or local).
+
 
 ### Setting Up StellaNow SDK
 To use the SDK, first ensure you have set the necessary environment variables:
@@ -35,8 +46,7 @@ To use the SDK, first ensure you have set the necessary environment variables:
 Then, configure the SDK with the appropriate authentication strategy.
 
 ### Using OIDC Authentication
-To authenticate with `StellaNow's` OIDC (OpenID Connect), use `configure_dev_oidc_mqtt_fifo_sdk`:
-
+To authenticate with `StellaNow's` OIDC (OpenID Connect) on DEV environment using FIFO order, use `configure_dev_oidc_mqtt_fifo_sdk`:
 
 ```python
 from stellanow_sdk_python.configure_sdk import configure_dev_oidc_mqtt_fifo_sdk
@@ -168,7 +178,7 @@ class UserDetailsMessage(StellaNowMessageBase):
             )
  ```
 
-Creating these classes by hand can be prone to errors. Therefore, we provide a command line interface (CLI) tool, StellaNow CLI, to automate this task. This tool generates the code for the message classes automatically based on the configuration defined in the Operators Console.
+Creating these classes by hand can be prone to errors. Therefore, we provide a command line interface (CLI) tool, [stellanow-cli](https://pypi.org/project/stellanow-cli/), to automate this task. This tool generates the code for the message classes automatically based on the configuration defined in the Operators Console.
 
 You can install the StellaNow CLI tool using pip:
 ```bash
