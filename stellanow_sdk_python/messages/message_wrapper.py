@@ -48,7 +48,7 @@ class StellaNowMessageWrapper(BaseModel):
         return self.value.get("metadata", {}).get("messageId", "unknown")
 
     @classmethod
-    def create(cls, message: StellaNowMessageBase, organization_id: str, project_id: str):
+    def create(cls, message: StellaNowMessageBase, organization_id: str, project_id: str) -> "StellaNowMessageWrapper":
         entity_ids = [entity["type"] + "EntityId" for entity in message.entities]
         exclude_payload_fields = {"event_name", "entities"}.union(set(entity_ids))
 

@@ -22,7 +22,7 @@ IN THE SOFTWARE.
 
 import queue
 import threading
-from queue import Queue
+from queue import LifoQueue
 from typing import Optional
 
 from stellanow_sdk_python.message_queue.message_queue_strategy.i_message_queue_strategy import IMessageQueueStrategy
@@ -34,8 +34,8 @@ class LifoMessageQueueStrategy(IMessageQueueStrategy):
     A last-in, first-out (LIFO) message_queue strategy for storing messages.
     """
 
-    def __init__(self):
-        self._queue: Queue = queue.LifoQueue()
+    def __init__(self) -> None:
+        self._queue: LifoQueue[StellaNowMessageWrapper] = queue.LifoQueue()
         self._lock = threading.Lock()
 
     def enqueue(self, message: StellaNowMessageWrapper) -> None:

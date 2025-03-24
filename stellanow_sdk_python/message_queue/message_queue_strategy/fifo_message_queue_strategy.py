@@ -34,8 +34,8 @@ class FifoMessageQueueStrategy(IMessageQueueStrategy):
     A first-in, first-out (FIFO) message_queue strategy for storing messages.
     """
 
-    def __init__(self):
-        self._queue: Queue = queue.Queue()
+    def __init__(self) -> None:
+        self._queue: Queue[StellaNowMessageWrapper] = queue.Queue()
         self._lock = threading.Lock()
 
     def enqueue(self, message: StellaNowMessageWrapper) -> None:

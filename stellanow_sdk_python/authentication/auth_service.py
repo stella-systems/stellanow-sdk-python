@@ -49,17 +49,17 @@ class StellaNowAuthenticationService:
         )
         self.project_info = project_info
         self.credentials = credentials
-        self.token_response: Optional[Dict[str, Any]] = None
+        self.token_response: Optional[Dict[str, str]] = None
         self.token_expires: Optional[datetime] = None
         self.lock = asyncio.Lock()
-        self._refresh_task: Optional[asyncio.Task] = None
+        self._refresh_task: Optional[asyncio.Task[None]] = None
 
-    async def start_refresh_task(self):
+    async def start_refresh_task(self) -> None:
         """Start a background task to refresh the token periodically."""
         if self._refresh_task is None:
             self._refresh_task = asyncio.create_task(self._auto_refresh())
 
-    async def stop_refresh_task(self):
+    async def stop_refresh_task(self) -> None:
         """Stop the token refresh task."""
         if self._refresh_task:
             self._refresh_task.cancel()
@@ -69,7 +69,7 @@ class StellaNowAuthenticationService:
                 pass
             self._refresh_task = None
 
-    async def _auto_refresh(self):
+    async def _auto_refresh(self) -> None:
         """Periodically refresh the token before it expires."""
         while True:
             if self.token_response and self.token_expires and not self._is_token_expired():
@@ -84,7 +84,7 @@ class StellaNowAuthenticationService:
                 logger.error(f"Failed to auto-refresh token: {e}")
                 await asyncio.sleep(60)
 
-    async def authenticate(self):
+    async def authenticate(self) -> str:
         """Authenticate and get the access token asynchronously."""
         async with self.lock:
             try:
@@ -116,7 +116,7 @@ class StellaNowAuthenticationService:
                 raise Exception(f"Authentication failed: {e}")
 
     @staticmethod
-    def _calculate_token_expires_time(token_response):
+    def _calculate_token_expires_time(token_response: Dict[str, Any]) -> datetime:
         token_expires_time = datetime.now() + timedelta(seconds=token_response.get("expires_in", 60))
         return token_expires_time - timedelta(seconds=10)
 
@@ -125,14 +125,14 @@ class StellaNowAuthenticationService:
             return True  # Treat as expired if not set
         return datetime.now() >= self.token_expires
 
-    async def get_access_token(self):
+    async def get_access_token(self) -> str:
         if self.token_response is None or self._is_token_expired():
             logger.info("Token expired or missing. Re-authenticating...")
             return await self.authenticate()
         assert self.token_response is not None
         return self.token_response["access_token"]
 
-    async def refresh_access_token(self):
+    async def refresh_access_token(self) -> str:
         async with self.lock:
             if not self.token_response or "refresh_token" not in self.token_response:
                 logger.warning("No valid refresh token available, falling back to authenticate.")

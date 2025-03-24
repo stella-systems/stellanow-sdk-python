@@ -41,7 +41,7 @@ lint-black = "black stellanow_sdk_python -l 120"
 lint-black-check = "black stellanow_sdk_python -l 120 --check --diff"
 lint-isort = "isort --multi-line=3 --trailing-comma --force-grid-wrap=0 --combine-as --line-width 120 ."
 lint-isort-check = "isort --multi-line=3 --trailing-comma --force-grid-wrap=0 --combine-as --line-width 120 --check-only ."
-lint-mypy = "mypy --ignore-missing-imports stellanow_sdk_python"
+lint-mypy = "mypy  --strict --ignore-missing-imports stellanow_sdk_python"
 lint-safety = "safety check"
 lint = { sequence = [
     { cmd = "echo Running all lint tasks" },

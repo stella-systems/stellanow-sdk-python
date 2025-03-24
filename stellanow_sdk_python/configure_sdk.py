@@ -27,7 +27,7 @@ from loguru import logger
 from stellanow_sdk_python.config.eniviroment_config.stellanow_env_config import EnvConfig, StellaNowEnvironmentConfig
 from stellanow_sdk_python.config.stellanow_auth_credentials import StellaNowCredentials
 from stellanow_sdk_python.config.stellanow_config import project_info_from_env
-from stellanow_sdk_python.message_queue.message_queue_strategy.fifo_messsage_queue_strategy import (
+from stellanow_sdk_python.message_queue.message_queue_strategy.fifo_message_queue_strategy import (
     FifoMessageQueueStrategy,
 )
 from stellanow_sdk_python.message_queue.message_queue_strategy.i_message_queue_strategy import MessageQueueType
