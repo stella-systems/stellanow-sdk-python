@@ -50,7 +50,7 @@ class StellaNowMqttSink(IStellaNowSink):
         mqtt_config = env_config.mqtt_url_config
 
         self.client = mqtt.Client(
-            callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+            callback_api_version=mqtt.CallbackAPIVersion.VERSION2,  # type: ignore[attr-defined]
             transport=mqtt_config.transport,
             client_id=self.client_id,
         )
@@ -64,7 +64,7 @@ class StellaNowMqttSink(IStellaNowSink):
 
         self.client.on_connect = self.on_connect
         self.client.on_publish = self.on_publish
-        self.client.on_disconnect = self.on_disconnect
+        self.client.on_disconnect = self.on_disconnect  # type: ignore[assignment]
 
         # Start the loop once during initialization
         self.client.loop_start()
@@ -120,9 +120,9 @@ class StellaNowMqttSink(IStellaNowSink):
         client: mqtt.Client,  # noqa
         userdata: Any,  # noqa
         flags: Dict[str, Any],  # noqa
-        reason_code: mqtt.ReasonCode,  # noqa
-        properties: Optional[mqtt.Properties],  # noqa
-    ) -> None:  # noqa
+        reason_code: mqtt.ReasonCode,  # type: ignore # noqa
+        properties: Optional[mqtt.Properties],  # type: ignore # noqa
+    ) -> None:
         if reason_code == 0:
             logger.info("Connected to MQTT broker")
             self._is_connected_event.set()
@@ -130,11 +130,25 @@ class StellaNowMqttSink(IStellaNowSink):
             logger.error(f"Connection failed with code {reason_code}")
             self._is_connected_event.clear()
 
-    def on_publish(self, client, userdata, mid, reason_code, properties) -> None:  # noqa
+    def on_publish(  # noqa
+        self,
+        client: mqtt.Client,  # noqa
+        userdata: Any,  # noqa
+        mid: int,
+        reason_code: mqtt.ReasonCode,  # type: ignore # noqa
+        properties: Optional[mqtt.Properties],  # type: ignore # noqa
+    ) -> None:
         logger.info(f"Message published with MID: {mid}, Reason: {reason_code}")
 
-    def on_disconnect(self, client, userdata, flags, reason_code, properties) -> None:  # noqa
-        logger.warning(f"Disconnected from MQTT broker with reason: {reason_code}")
+    def on_disconnect(
+        self,
+        client: mqtt.Client,  # noqa
+        userdata: Any,  # noqa
+        flags: Dict[str, int],  # noqa
+        rc: int,
+        properties: Optional[Any] = None,  # noqa
+    ) -> None:
+        logger.warning(f"Disconnected from MQTT broker with reason: {rc}")
         self._is_connected_event.clear()
 
     async def _connection_monitor(self) -> None:

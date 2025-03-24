@@ -45,7 +45,7 @@ class StellaNowMessageWrapper(BaseModel):
     @property
     def message_id(self) -> str:
         """Safely extract messageId from value.metadata."""
-        return self.value.get("metadata", {}).get("messageId", "unknown")
+        return str(self.value.get("metadata", {}).get("messageId", "unknown"))
 
     @classmethod
     def create(cls, message: StellaNowMessageBase, organization_id: str, project_id: str) -> "StellaNowMessageWrapper":

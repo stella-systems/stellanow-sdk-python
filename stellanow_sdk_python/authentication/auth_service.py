@@ -89,7 +89,7 @@ class StellaNowAuthenticationService:
         async with self.lock:
             try:
                 token_response = await self.keycloak_openid.a_token(
-                    username=self.credentials.username, password=self.credentials.password
+                    username=self.credentials.username, password=self.credentials.password  # type: ignore[arg-type]
                 )
                 if not isinstance(token_response, dict):
                     logger.error(
