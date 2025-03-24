@@ -78,7 +78,7 @@ class StellaNowMqttSink(IStellaNowSink):
         if not self._monitor_task:
             self._monitor_task = asyncio.create_task(self._connection_monitor())
             try:
-                await asyncio.wait_for(self._is_connected_event.wait(), timeout=30)
+                await asyncio.wait_for(self._is_connected_event.wait(), timeout=None)
                 logger.info("Initial connection established")
             except asyncio.TimeoutError:
                 logger.warning("Initial connection timed out after 30s, but monitor continues in background")
@@ -100,7 +100,9 @@ class StellaNowMqttSink(IStellaNowSink):
 
     async def send_message(self, message: StellaNowMessageWrapper) -> None:
         if not self.is_connected():
-            raise Exception("MQTT sink is not connected.")
+            logger.warning(
+                f"Cannot send message {message.message_id}: MQTT sink is disconnected. Awaiting reconnection...")
+            raise Exception("MQTT sink is disconnected; connection monitor is attempting to reconnect.")
         mqtt_topic = f"in/{self.project_info.organization_id}"
         result = self.client.publish(mqtt_topic, message.model_dump_json(), qos=self.default_qos)
         logger.info(f"Publish result: {result.rc}, MID: {result.mid}")

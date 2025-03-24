@@ -63,9 +63,6 @@ class StellaNowSDK:
         Starts the SDK and connects to the sink.
         """
         await self.sink.connect()  # Blocks until connected
-        while not self.sink.is_connected():
-            logger.debug("Waiting for sink to connect before starting queue...")
-            await asyncio.sleep(5)
         self.message_queue.start_processing()
         logger.info("SDK started successfully")
 
