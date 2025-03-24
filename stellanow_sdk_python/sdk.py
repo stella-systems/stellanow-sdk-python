@@ -37,7 +37,6 @@ This demo sends two `UserDetailsMessage` events, simulating real-time user data 
 lifecycle: initialization, event sending, and shutdown.
 """
 
-import asyncio
 import time
 from typing import Optional
 
