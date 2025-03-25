@@ -24,13 +24,18 @@ import paho.mqtt.client as mqtt
 from loguru import logger
 
 from stellanow_sdk_python.authentication.auth_service import StellaNowAuthenticationService
+from stellanow_sdk_python.config.eniviroment_config.stellanow_env_config import StellaNowEnvironmentConfig
+from stellanow_sdk_python.config.stellanow_auth_credentials import StellaNowCredentials
+from stellanow_sdk_python.config.stellanow_config import StellaProjectInfo
 from stellanow_sdk_python.sinks.mqtt.auth_strategy.i_mqtt_auth_strategy import IMqttAuthStrategy
 
 
 class OidcMqttAuthStrategy(IMqttAuthStrategy):
     """Authentication strategy using OpenID Connect (OIDC)."""
 
-    def __init__(self, project_info, credentials, env_config):
+    def __init__(
+        self, project_info: StellaProjectInfo, credentials: StellaNowCredentials, env_config: StellaNowEnvironmentConfig
+    ) -> None:
         self.project_info = project_info
         self.credentials = credentials
         self.env_config = env_config

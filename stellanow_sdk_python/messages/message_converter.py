@@ -21,9 +21,10 @@ IN THE SOFTWARE.
 """
 
 from datetime import date, datetime
+from typing import Any
 
 
-def convert_datetime_fields(obj):
+def convert_datetime_fields(obj: Any) -> Any:
     """Recursively converts all datetime and date fields to ISO 8601 format with 'Z' suffix."""
     if isinstance(obj, dict):
         return {key: convert_datetime_fields(value) for key, value in obj.items()}

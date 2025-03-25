@@ -44,43 +44,38 @@ from loguru import logger
 from models.phone_number_model import PhoneNumberModel
 from user_details_message import UserDetailsMessage
 
-from stellanow_sdk_python.configure_sdk import configure_dev_oidc_mqtt_fifo_sdk
+from stellanow_sdk_python.configure_sdk import configure_dev_username_password_mqtt_lifo_sdk
 
 
 async def main():
     """Main entry point for the StellaNow SDK demo."""
     # sdk = configure_local_nanomq_username_password_mqtt_lifo_sdk()
-    sdk = configure_dev_oidc_mqtt_fifo_sdk()
+    # sdk = configure_dev_oidc_mqtt_fifo_sdk()
+    sdk = configure_dev_username_password_mqtt_lifo_sdk()
+    shutdown_event = asyncio.Event()  # Event to signal shutdown
+
     try:
-        # Start the SDK
         await sdk.start()
-        logger.info("SDK started successfully.")
-
-        # Create and send sample messages
-        message = UserDetailsMessage(
-            patronEntityId="12345", user_id="user_67890", phone_number=PhoneNumberModel(country_code=44, number=753594)
-        )
-        message2 = UserDetailsMessage(
-            patronEntityId="12345", user_id="user_98888", phone_number=PhoneNumberModel(country_code=48, number=700000)
-        )
-        logger.info("Sending user detail messages...")
-        await sdk.send_message(message)
-        await sdk.send_message(message2)
-        logger.info("Messages enqueued for processing.")
-
-        # Simulate ongoing work
-        await asyncio.sleep(5)
-        logger.info("Simulation complete, preparing to shut down.")
+        for i in range(10):
+            message = UserDetailsMessage(
+                patronEntityId="12345",
+                user_id=f"user_{i}",
+                phone_number=PhoneNumberModel(country_code=44, number=753594 + i)
+            )
+            logger.info(f"Sending message {i + 1}...")
+            await sdk.send_message(message)
+            await asyncio.sleep(2)
+        logger.info("Initial messages sent. Keeping SDK alive...")
+        await shutdown_event.wait()  # Wait indefinitely until shutdown
 
     except KeyboardInterrupt:
         logger.warning("Received Ctrl+C, shutting down gracefully...")
+        shutdown_event.set()  # Signal shutdown
         await sdk.stop()
     except Exception as e:
         logger.error(f"Unexpected error occurred: {e}")
         await sdk.stop()
-    finally:
-        await sdk.stop()
-        logger.info("Demo completed.")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

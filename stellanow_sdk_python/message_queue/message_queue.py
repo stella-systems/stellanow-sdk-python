@@ -36,9 +36,9 @@ class StellaNowMessageQueue:
         self.strategy = strategy
         self.sink = sink
         self.processing = False
-        self._task: Optional[asyncio.Task] = None  # Store the asyncio task
+        self._task: Optional[asyncio.Task[None]] = None
 
-    def start_processing(self):
+    def start_processing(self) -> None:
         """Start processing the queue as an asyncio task."""
         if not self.processing:
             self.processing = True
@@ -46,12 +46,9 @@ class StellaNowMessageQueue:
             self._task = loop.create_task(self._process_queue())
             logger.info("Message queue processing started as asyncio task...")
 
-    async def stop_processing(self, timeout: float = 5.0):
+    async def stop_processing(self, timeout: float = 5.0) -> None:
         """
         Stop the queue processing with an optional timeout.
-
-        Args:
-            timeout (float): Maximum time in seconds to wait for shutdown. Defaults to 5.0.
         """
         if self.processing:
             self.processing = False
@@ -69,31 +66,44 @@ class StellaNowMessageQueue:
                     self._task = None
             logger.info("Message queue processing stopped.")
 
-    def enqueue(self, message: StellaNowMessageWrapper):
+    def enqueue(self, message: StellaNowMessageWrapper) -> None:
         """Add a message to the queue."""
         self.strategy.enqueue(message)
-        logger.info(f"Message queued with messageId:{message.message_id}")
-        logger.debug(f"Message queued: {message}")
+        logger.info(f"Message queued with messageId:{message.message_id}, Queue size: {self.get_message_count()}")
 
-    async def _process_queue(self):
-        """Process the queue asynchronously using the existing event loop."""
-        while self.processing or not self.strategy.is_empty():
-            try:
+    async def _process_queue(self) -> None:
+        """Process the queue asynchronously with connection handling."""
+        logger.info(f"Starting queue processing with initial queue size: {self.get_message_count()}")
+        while self.processing:
+            if not self.sink.is_connected():
+                logger.warning("Sink is disconnected, pausing queue processing...")
+                await self._wait_for_connection()
+                logger.info(f"Sink reconnected, resuming queue processing with queue size: {self.get_message_count()}")
+            elif not self.strategy.is_empty():
                 message = self.strategy.try_dequeue()
                 if message:
+                    logger.debug(f"Dequeued message {message.message_id}, Queue size: {self.get_message_count()}")
                     await self._send_message_to_sink(message)
-                else:
-                    await asyncio.sleep(0.1)  # Brief pause to avoid tight loop
-            except Exception as e:
-                logger.error(f"Error processing message queue: {e}")
-                await asyncio.sleep(1)  # Back off on error
+            else:
+                logger.debug("No messages in queue, waiting briefly...")
+                await asyncio.sleep(0.1)
 
-    async def _send_message_to_sink(self, message: StellaNowMessageWrapper):
-        """Send a message to the sink."""
+    async def _send_message_to_sink(self, message: StellaNowMessageWrapper) -> None:
+        """Send a message to the sink with retry on failure."""
         try:
             await self.sink.send_message(message)
+            logger.success(f"Message sent successfully with messageId:{message.message_id}")
         except Exception as e:
-            logger.error(f"Failed to send message to sink: {e}")
+            logger.error(f"Failed to send message {message.message_id}: {e}")
+            self.strategy.enqueue(message)
+            logger.warning(f"Message {message.message_id} re-queued, Queue size: {self.get_message_count()}")
+            await asyncio.sleep(1)
+
+    async def _wait_for_connection(self) -> None:
+        """Wait for the sink to reconnect."""
+        while self.processing and not self.sink.is_connected():
+            logger.debug("Waiting for sink to reconnect...")
+            await asyncio.sleep(0.5)
 
     def is_empty(self) -> bool:
         """Check if the queue is empty."""

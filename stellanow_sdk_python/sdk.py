@@ -57,14 +57,15 @@ class StellaNowSDK:
         self.sink = sink
         self.message_queue = StellaNowMessageQueue(strategy=queue_strategy, sink=sink)
 
-    async def start(self):
+    async def start(self) -> None:
         """
         Starts the SDK and connects to the sink.
         """
-        await self.sink.connect()
+        await self.sink.connect()  # Blocks until connected
         self.message_queue.start_processing()
+        logger.info("SDK started successfully")
 
-    async def send_message(self, message: StellaNowMessageBase):
+    async def send_message(self, message: StellaNowMessageBase) -> None:
         """
         Sends a message through the sink.
         :param message: The message to send.
@@ -76,22 +77,24 @@ class StellaNowSDK:
         )
         self.message_queue.enqueue(wrapped_message)
 
-    def wait_for_queue_to_empty(self, timeout: Optional[float] = None):
+    def wait_for_queue_to_empty(self, timeout: Optional[float] = None) -> bool:
         """
-        Waits for the message message_queue to be empty before proceeding.
+        Waits for the message queue to be empty before proceeding.
         :param timeout: Maximum time to wait (in seconds). If None, waits indefinitely.
+        :return: True if the queue is empty, False if timeout is reached and queue is not empty.
         """
         start_time = time.time()
         while not self.message_queue.is_empty():
-            if timeout and (time.time() - start_time) > timeout:
-                logger.warning("Timeout reached while waiting for the message_queue to empty.")
-                break
+            if timeout is not None and (time.time() - start_time) > timeout:
+                logger.warning("Timeout reached while waiting for the message queue to empty.")
+                return False
             time.sleep(0.1)
-        logger.info("message_queue is empty.")
+        logger.info("Message queue is empty.")
+        return True
 
-    async def stop(self):
+    async def stop(self) -> None:
         """Stops the SDK after ensuring the message queue is empty."""
-        self.wait_for_queue_to_empty()
+        self.wait_for_queue_to_empty(timeout=10)
+        await self.message_queue.stop_processing(timeout=5.0)
         await self.sink.disconnect()
-        await self.message_queue.stop_processing(timeout=5.0)  # Add timeout
-        logger.info("SDK stopped successfully.")
+        logger.info("SDK stopped successfully")
