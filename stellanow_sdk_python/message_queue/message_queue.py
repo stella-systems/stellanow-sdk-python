@@ -69,7 +69,7 @@ class StellaNowMessageQueue:
     def enqueue(self, message: StellaNowMessageWrapper) -> None:
         """Add a message to the queue."""
         self.strategy.enqueue(message)
-        logger.info(f"Message queued with messageId:{message.message_id}, Queue size: {self.get_message_count()}")
+        logger.info(f"Message queued with messageId: {message.message_id}, Queue size: {self.get_message_count()}")
 
     async def _process_queue(self) -> None:
         """Process the queue asynchronously with connection handling."""
@@ -92,7 +92,7 @@ class StellaNowMessageQueue:
         """Send a message to the sink with retry on failure."""
         try:
             await self.sink.send_message(message)
-            logger.success(f"Message sent successfully with messageId:{message.message_id}")
+            logger.success(f"Message sent successfully with messageId: {message.message_id}")
         except Exception as e:
             logger.error(f"Failed to send message {message.message_id}: {e}")
             self.strategy.enqueue(message)
