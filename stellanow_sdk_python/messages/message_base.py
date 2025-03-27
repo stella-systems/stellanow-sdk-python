@@ -20,11 +20,24 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 """
 
-from typing import Dict, List
+from typing import Any, Dict, List
 
 from pydantic import BaseModel
 
 
+class EntityType(BaseModel):
+    entityTypeDefinitionId: str
+    entityId: str
+
+    def to_json(self) -> Dict[str, str]:
+        """Serialize the EntityType to a dictionary."""
+        return {"entityTypeDefinitionId": self.entityTypeDefinitionId, "entityId": self.entityId}
+
+
 class StellaNowMessageBase(BaseModel):
     event_name: str
-    entities: List[Dict[str, str]]
+    entities: List[EntityType]
+
+    def to_json(self) -> Dict[str, Any]:
+        """Base method to serialize the message to a dictionary."""
+        return {}

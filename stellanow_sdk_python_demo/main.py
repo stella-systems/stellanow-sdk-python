@@ -58,9 +58,7 @@ async def main():
         await sdk.start()
         for i in range(10):
             message = UserDetailsMessage(
-                patronEntityId="12345",
-                user_id=f"user_{i}",
-                phone_number=PhoneNumberModel(country_code=44, number=753594 + i)
+                patron="12345", user_id=f"user_{i}", phone_number=PhoneNumberModel(country_code=44, number=753594 + i)
             )
             logger.info(f"Sending message {i + 1}...")
             await sdk.send_message(message)

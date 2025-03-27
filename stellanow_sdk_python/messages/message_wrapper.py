@@ -28,7 +28,6 @@ from typing import Any, Dict, List
 from pydantic import BaseModel
 
 from stellanow_sdk_python.messages.message_base import StellaNowMessageBase
-from stellanow_sdk_python.messages.message_converter import convert_datetime_fields
 
 
 class Metadata(BaseModel):
@@ -49,30 +48,20 @@ class StellaNowMessageWrapper(BaseModel):
 
     @classmethod
     def create(cls, message: StellaNowMessageBase, organization_id: str, project_id: str) -> "StellaNowMessageWrapper":
-        entity_ids = [entity["type"] + "EntityId" for entity in message.entities]
-        exclude_payload_fields = {"event_name", "entities"}.union(set(entity_ids))
-
-        # Convert message to dictionary while excluding specified fields
-        message_dict = message.model_dump(exclude=exclude_payload_fields)
-        # Ensure datetime fields are correctly serialized
-        serialized_payload = convert_datetime_fields(message_dict)
-        # Convert to JSON string
-        payload_json = json.dumps(serialized_payload)
+        payload_json = json.dumps(message.to_json())
 
         metadata = Metadata(
             messageId=str(uuid.uuid4()),
             messageOriginDateUTC=datetime.utcnow().isoformat() + "Z",
             eventTypeDefinitionId=message.event_name,
-            entityTypeIds=[
-                {"entityTypeDefinitionId": entity["type"], "entityId": entity["id"]} for entity in message.entities
-            ],
+            entityTypeIds=[entity.to_json() for entity in message.entities],
         )
         return cls(
             key={
                 "organizationId": organization_id,
                 "projectId": project_id,
-                "entityId": message.entities[0]["id"],
-                "entityTypeDefinitionId": message.entities[0]["type"],
+                "entityId": message.entities[0].entityId,
+                "entityTypeDefinitionId": message.entities[0].entityTypeDefinitionId,
             },
             value={
                 "metadata": metadata.model_dump(),
