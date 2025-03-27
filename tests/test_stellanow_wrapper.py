@@ -21,6 +21,7 @@ IN THE SOFTWARE.
 """
 
 import json
+import uuid
 from datetime import datetime
 from typing import Dict
 
@@ -124,8 +125,12 @@ def test_stellanow_message_wrapper_full_structure(test_message, organization_id,
     metadata = value["metadata"]
     expected_metadata_keys = {"messageId", "messageOriginDateUTC", "eventTypeDefinitionId", "entityTypeIds"}
     assert set(metadata.keys()) == expected_metadata_keys, f"Metadata keys mismatch. Expected {expected_metadata_keys}, got {set(metadata.keys())}"
+    # Validate messageId as a UUID
     assert isinstance(metadata["messageId"], str), "messageId must be a string"
-    assert len(metadata["messageId"]) == 36, "messageId should be a UUID (36 characters)"
+    try:
+        uuid.UUID(metadata["messageId"], version=4)
+    except ValueError:
+        pytest.fail("messageId must be a valid UUID v4")
     assert metadata["eventTypeDefinitionId"] == "test_event", "Event type mismatch"
     assert isinstance(metadata["messageOriginDateUTC"], str), "messageOriginDateUTC must be a string"
     try:
