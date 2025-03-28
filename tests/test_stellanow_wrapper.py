@@ -156,7 +156,6 @@ def test_stellanow_event_wrapper_full_structure(
 
     # Validate serialization
     serialized = event_wrapper.model_dump(by_alias=True)
-    print(serialized)
     assert set(serialized.keys()) == {"key", "value"}, "Serialized output must contain only 'key' and 'value'"
     assert serialized["key"] == expected_key, "Serialized key mismatch"
     metadata = serialized["value"]["metadata"]
