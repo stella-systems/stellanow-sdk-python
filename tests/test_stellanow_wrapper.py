@@ -161,6 +161,9 @@ def test_stellanow_event_wrapper_full_structure(
     assert serialized["key"] == expected_key, "Serialized key mismatch"
     metadata = serialized["value"]["metadata"]
     assert metadata["messageOriginDateUTC"].endswith("Z"), "messageOriginDateUTC must end with 'Z'"
+    # Add a check for the exact format
+    assert "T" in metadata["messageOriginDateUTC"], "messageOriginDateUTC must contain 'T'"
+    assert "+" not in metadata["messageOriginDateUTC"], "messageOriginDateUTC must not contain offset"
     try:
         datetime.fromisoformat(metadata["messageOriginDateUTC"].rstrip("Z"))
     except ValueError:

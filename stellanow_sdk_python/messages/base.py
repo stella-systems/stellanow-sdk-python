@@ -40,7 +40,7 @@ class StellaNowBaseModel(BaseModel):
             elif isinstance(obj, list):
                 return [convert_fields(item) for item in obj]
             elif isinstance(obj, datetime):
-                return obj.isoformat() + "Z"
+                return obj.strftime("%Y-%m-%dT%H:%M:%S.%f") + "Z"
             elif isinstance(obj, date):
                 return obj.isoformat()
             return obj
