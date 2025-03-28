@@ -9,7 +9,7 @@ from typing import Dict
 
 from models.phone_number_model import PhoneNumberModel
 
-from stellanow_sdk_python.messages.message_base import EntityType, StellaNowMessageBase
+from stellanow_sdk_python.messages.message import EntityType, StellaNowMessageBase
 
 
 class UserDetailsMessage(StellaNowMessageBase):

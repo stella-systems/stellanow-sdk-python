@@ -29,7 +29,7 @@ from nanoid import generate
 
 from stellanow_sdk_python.config.eniviroment_config.stellanow_env_config import StellaNowEnvironmentConfig
 from stellanow_sdk_python.config.stellanow_config import StellaProjectInfo
-from stellanow_sdk_python.messages.message_wrapper import StellaNowMessageWrapper
+from stellanow_sdk_python.messages.message import StellaNowMessageWrapper
 from stellanow_sdk_python.sinks.i_stellanow_sink import IStellaNowSink
 from stellanow_sdk_python.sinks.mqtt.auth_strategy.i_mqtt_auth_strategy import IMqttAuthStrategy
 from stellanow_sdk_python.sinks.mqtt.auth_strategy.oidc_mqtt_auth_strategy import OidcMqttAuthStrategy

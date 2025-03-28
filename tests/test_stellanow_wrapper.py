@@ -21,144 +21,184 @@ IN THE SOFTWARE.
 """
 
 import json
+import pytest
 import uuid
+
 from datetime import datetime
+from pydantic import Field
 from typing import Dict
 
-import pytest
-
-from stellanow_sdk_python.messages.message_base import EntityType, StellaNowMessageBase
-from stellanow_sdk_python.messages.message_wrapper import StellaNowMessageWrapper
-
-
-@pytest.fixture
-def test_message():
-    """Fixture providing a sample TestMessage instance with EntityType-based entities.
-
-    Returns:
-        TestMessage: A configured instance of the TestMessage class.
-    """
-    class TestMessage(StellaNowMessageBase):
-        phone_number: Dict[str, int]  # Simplified for testing; replace with PhoneNumberModel if needed
-        user_id: str
-
-        def to_json(self) -> Dict:
-            """Serialize the message fields to a dictionary, excluding entity-related fields."""
-            return {
-                "phone_number": self.phone_number,
-                "user_id": self.user_id
-            }
-
-    return TestMessage(
-        event_name="test_event",
-        entities=[EntityType(entityTypeDefinitionId="test", entityId="test_id")],
-        phone_number={"country_code": 48, "number": 700000},
-        user_id="user_98888"
-    )
+from stellanow_sdk_python.messages.base import StellaNowBaseModel
+from stellanow_sdk_python.messages.message import Entity, StellaNowMessageBase, StellaNowMessageWrapper, Metadata
+from stellanow_sdk_python.messages.event import StellaNowEventWrapper, EventKey
 
 
 @pytest.fixture
-def organization_id():
-    """Fixture providing a sample organization ID.
-
-    Returns:
-        str: A UUID string representing the organization ID.
-    """
+def organization_id() -> str:
+    """Fixture providing a sample organization ID."""
     return "9dbc5cc1-8c36-463e-893c-b08713868e97"
 
 
 @pytest.fixture
-def project_id():
-    """Fixture providing a sample project ID.
-
-    Returns:
-        str: A UUID string representing the project ID.
-    """
+def project_id() -> str:
+    """Fixture providing a sample project ID."""
     return "529360a9-e40c-4d93-b3d3-5ed9f76c0037"
 
 
-def test_stellanow_message_wrapper_full_structure(test_message, organization_id, project_id):
-    """Test that StellaNowMessageWrapper creates a fully structured message with correct key, value, metadata, and payload.
+@pytest.fixture
+def test_message() -> StellaNowMessageBase:
+    class PhoneNumber(StellaNowBaseModel):
+        number: int = Field(..., serialization_alias="number")
+        country_code: int = Field(..., serialization_alias="country_code")
 
-    This test validates the entire structure of the wrapped message, ensuring all fields are present,
-    correctly formatted, and match the expected values based on the input message.
+    class TestMessage(StellaNowMessageBase):
+        phone_number: PhoneNumber = Field(..., serialization_alias="phone_number")
+        user_id: str = Field(..., serialization_alias="user_id")
 
-    Args:
-        test_message (TestMessage): The sample message instance to wrap.
-        organization_id (str): The organization ID for the wrapper key.
-        project_id (str): The project ID for the wrapper key.
-    """
-    # Create the wrapped message
-    wrapped_message = StellaNowMessageWrapper.create(
-        message=test_message,
-        organization_id=organization_id,
-        project_id=project_id,
+    return TestMessage(
+        phone_number=PhoneNumber(country_code=48, number=700000),
+        user_id="user_98888",
+        event_name="test_event",
+        entities=[Entity(entity_type_definition_id="test", entity_id="test_id")]
+    )
+
+
+@pytest.fixture
+def message_wrapper(test_message: StellaNowMessageBase) -> StellaNowMessageWrapper:
+    """Fixture providing a StellaNowMessageWrapper instance."""
+    return StellaNowMessageWrapper.create(test_message)
+
+
+def test_stellanow_message_wrapper_create(test_message: StellaNowMessageBase):
+    """Test the create method of StellaNowMessageWrapper."""
+    wrapped_message = StellaNowMessageWrapper.create(test_message)
+
+    # Validate instance type
+    assert isinstance(wrapped_message, StellaNowMessageWrapper), "Must return a StellaNowMessageWrapper instance"
+
+    # Validate metadata
+    metadata = wrapped_message.metadata
+    assert isinstance(metadata, Metadata), "Metadata must be a Metadata instance"
+    assert isinstance(metadata.message_id, str), "message_id must be a string"
+    try:
+        uuid.UUID(metadata.message_id, version=4)
+    except ValueError:
+        pytest.fail("message_id must be a valid UUID v4")
+    assert isinstance(metadata.message_origin_date_utc, datetime), "message_origin_date_utc must be a datetime"
+    assert metadata.event_type_definition_id == "test_event", "Event type mismatch"
+    assert metadata.entity_type_ids == test_message.entities, "Entities mismatch"
+
+    # Validate payload
+    payload_dict = json.loads(wrapped_message.payload)
+    expected_payload = {
+        "phone_number": {"country_code": 48, "number": 700000},
+        "user_id": "user_98888",
+    }
+    assert payload_dict == expected_payload, f"Payload mismatch. Expected {expected_payload}, got {payload_dict}"
+
+    # Validate message_id property
+    assert wrapped_message.message_id == metadata.message_id, "message_id property must match metadata.message_id"
+
+
+def test_stellanow_message_wrapper_create_raw():
+    """Test the create_raw method of StellaNowMessageWrapper."""
+    entities = [Entity(entity_type_definition_id="test", entity_id="test_id")]
+    message_json = json.dumps({"test": "data"})
+    wrapped_message = StellaNowMessageWrapper.create_raw(
+        event_type_definition_id="test_event",
+        entity_types=entities,
+        message_json=message_json
     )
 
     # Validate instance type
-    assert isinstance(wrapped_message, StellaNowMessageWrapper), "Wrapped message must be a StellaNowMessageWrapper instance"
+    assert isinstance(wrapped_message, StellaNowMessageWrapper), "Must return a StellaNowMessageWrapper instance"
 
-    # Full key structure validation
+    # Validate metadata
+    metadata = wrapped_message.metadata
+    assert isinstance(metadata.message_id, str), "message_id must be a string"
+    assert isinstance(metadata.message_origin_date_utc, datetime), "message_origin_date_utc must be a datetime"
+    assert metadata.event_type_definition_id == "test_event", "Event type mismatch"
+    assert metadata.entity_type_ids == entities, "Entities mismatch"
+
+    # Validate payload
+    assert wrapped_message.payload == message_json, "Payload must match input"
+
+
+def test_stellanow_event_wrapper_full_structure(
+    message_wrapper: StellaNowMessageWrapper, organization_id: str, project_id: str
+):
+    """Test the full structure of StellaNowEventWrapper."""
+    event_wrapper = StellaNowEventWrapper.create(
+        message=message_wrapper,
+        organization_id=organization_id,
+        project_id=project_id
+    )
+
+    # Validate instance type
+    assert isinstance(event_wrapper, StellaNowEventWrapper), "Must return a StellaNowEventWrapper instance"
+
+    # Validate key
+    assert isinstance(event_wrapper.key, EventKey), "Key must be an EventKey instance"
     expected_key = {
         "organizationId": organization_id,
         "projectId": project_id,
         "entityId": "test_id",
         "entityTypeDefinitionId": "test"
     }
-    assert wrapped_message.key == expected_key, f"Key structure mismatch. Expected {expected_key}, got {wrapped_message.key}"
+    key_dict = event_wrapper.key.model_dump(by_alias=True)
+    assert key_dict == expected_key, f"Key mismatch. Expected {expected_key}, got {key_dict}"
 
-    # Full value structure validation
-    value = wrapped_message.value
-    assert set(value.keys()) == {"metadata", "payload"}, "Value must contain only 'metadata' and 'payload' keys"
-    assert isinstance(value["payload"], str), "Payload must be a string"
-    assert isinstance(value["metadata"], dict), "Metadata must be a dictionary"
+    # Validate value
+    assert event_wrapper.value == message_wrapper, "Value must match the input message wrapper"
 
-    # Payload validation
-    payload_dict = json.loads(value["payload"])
-    expected_payload = {
-        "phone_number": {"country_code": 48, "number": 700000},
-        "user_id": "user_98888"
-    }
-    assert payload_dict == expected_payload, f"Payload mismatch. Expected {expected_payload}, got {payload_dict}"
+    # Validate message_id property
+    assert event_wrapper.message_id == message_wrapper.message_id, "message_id must match the wrapped message's message_id"
 
-    # Metadata validation
-    metadata = value["metadata"]
-    expected_metadata_keys = {"messageId", "messageOriginDateUTC", "eventTypeDefinitionId", "entityTypeIds"}
-    assert set(metadata.keys()) == expected_metadata_keys, f"Metadata keys mismatch. Expected {expected_metadata_keys}, got {set(metadata.keys())}"
-    # Validate messageId as a UUID
-    assert isinstance(metadata["messageId"], str), "messageId must be a string"
-    try:
-        uuid.UUID(metadata["messageId"], version=4)
-    except ValueError:
-        pytest.fail("messageId must be a valid UUID v4")
-    assert metadata["eventTypeDefinitionId"] == "test_event", "Event type mismatch"
-    assert isinstance(metadata["messageOriginDateUTC"], str), "messageOriginDateUTC must be a string"
+    # Validate serialization
+    serialized = event_wrapper.model_dump(by_alias=True)
+    print(serialized)
+    assert set(serialized.keys()) == {"key", "value"}, "Serialized output must contain only 'key' and 'value'"
+    assert serialized["key"] == expected_key, "Serialized key mismatch"
+    metadata = serialized["value"]["metadata"]
+    assert metadata["messageOriginDateUTC"].endswith("Z"), "messageOriginDateUTC must end with 'Z'"
     try:
         datetime.fromisoformat(metadata["messageOriginDateUTC"].rstrip("Z"))
     except ValueError:
         pytest.fail("messageOriginDateUTC must be a valid ISO format datetime")
-    expected_entity_type_ids = [{"entityTypeDefinitionId": "test", "entityId": "test_id"}]
-    assert metadata["entityTypeIds"] == expected_entity_type_ids, f"entityTypeIds mismatch. Expected {expected_entity_type_ids}, got {metadata['entityTypeIds']}"
 
 
-def test_stellanow_message_wrapper_empty_entities(test_message, organization_id, project_id):
-    """Test that StellaNowMessageWrapper raises an error when created with a message having no entities.
+def test_stellanow_message_wrapper_serialization_exclusions(test_message: StellaNowMessageBase):
+    """Test that private attributes are excluded from serialization."""
+    wrapped_message = StellaNowMessageWrapper.create(test_message)
+    serialized = wrapped_message.model_dump(by_alias=True)
 
-    This test ensures that the wrapper fails gracefully when the input message lacks entities,
-    as the key construction depends on at least one entity being present.
+    # Private attributes should not be in the serialized output
+    assert "event_name" not in serialized, "Private attribute 'event_name' must be excluded"
+    assert "entities" not in serialized, "Private attribute 'entities' must be excluded"
 
-    Args:
-        test_message (TestMessage): The sample message instance to modify and wrap.
-        organization_id (str): The organization ID for the wrapper key.
-        project_id (str): The project ID for the wrapper key.
+    # Validate expected fields
+    assert set(serialized.keys()) == {"metadata", "payload"}, "Serialized output must contain only 'metadata' and 'payload'"
 
-    Raises:
-        IndexError: If the entities list is empty, indicating an invalid message state.
-    """
-    test_message.entities = []  # Simulate empty entities
-    with pytest.raises(IndexError, match="list index out of range"):
-        StellaNowMessageWrapper.create(
-            message=test_message,
-            organization_id=organization_id,
-            project_id=project_id,
-        )
+
+def test_stellanow_message_wrapper_optional_fields():
+    """Test handling of optional fields in Metadata."""
+    entities = [Entity(entity_type_definition_id="test", entity_id="test_id")]
+    message_json = json.dumps({"test": "data"})
+    wrapped_message = StellaNowMessageWrapper(
+        metadata=Metadata(
+            message_id=None,
+            message_origin_date_utc=None,
+            event_type_definition_id=None,
+            entity_type_ids=entities
+        ),
+        payload=message_json
+    )
+
+    # Validate serialization
+    serialized = wrapped_message.model_dump(by_alias=True)
+    assert serialized["metadata"]["messageId"] is None, "messageId should be None"
+    assert serialized["metadata"]["messageOriginDateUTC"] is None, "messageOriginDateUTC should be None"
+    assert serialized["metadata"]["eventTypeDefinitionId"] is None, "eventTypeDefinitionId should be None"
+
+    # Validate message_id property
+    assert wrapped_message.message_id is None, "message_id should be None when metadata.message_id is None"

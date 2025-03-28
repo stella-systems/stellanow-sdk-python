@@ -45,8 +45,7 @@ from loguru import logger
 from stellanow_sdk_python.config.stellanow_config import StellaProjectInfo
 from stellanow_sdk_python.message_queue.message_queue import StellaNowMessageQueue
 from stellanow_sdk_python.message_queue.message_queue_strategy.i_message_queue_strategy import IMessageQueueStrategy
-from stellanow_sdk_python.messages.message_base import StellaNowMessageBase
-from stellanow_sdk_python.messages.message_wrapper import StellaNowMessageWrapper
+from stellanow_sdk_python.messages.message import StellaNowMessageWrapper, StellaNowMessageBase
 from stellanow_sdk_python.sinks.i_stellanow_sink import IStellaNowSink
 
 

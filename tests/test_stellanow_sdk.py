@@ -29,7 +29,7 @@ from stellanow_sdk_python.config.stellanow_config import project_info_from_env
 from stellanow_sdk_python.message_queue.message_queue_strategy.fifo_message_queue_strategy import (
     FifoMessageQueueStrategy,
 )
-from stellanow_sdk_python.messages.message_base import EntityType, StellaNowMessageBase
+from stellanow_sdk_python.messages.message import Entity, StellaNowMessageBase
 from stellanow_sdk_python.sdk import StellaNowSDK
 from stellanow_sdk_python.sinks.i_stellanow_sink import IStellaNowSink
 
@@ -54,7 +54,7 @@ def mock_message():
 
     return MockMessage(
         event_name="test_event",
-        entities=[EntityType(entityTypeDefinitionId="test", entityId="test_id")],
+        entities=[Entity(entityTypeDefinitionId="test", entityId="test_id")],
         user_id="user_98888"
     )
 

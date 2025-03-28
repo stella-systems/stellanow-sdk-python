@@ -24,7 +24,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Optional
 
-from stellanow_sdk_python.messages.message_wrapper import StellaNowMessageWrapper
+from stellanow_sdk_python.messages.message import StellaNowMessageWrapper
 
 
 class MessageQueueType(Enum):

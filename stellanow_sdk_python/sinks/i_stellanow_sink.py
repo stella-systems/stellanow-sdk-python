@@ -22,7 +22,7 @@ IN THE SOFTWARE.
 
 from abc import ABC, abstractmethod
 
-from stellanow_sdk_python.messages.message_wrapper import StellaNowMessageWrapper
+from stellanow_sdk_python.messages.message import StellaNowMessageWrapper
 
 
 class IStellaNowSink(ABC):
