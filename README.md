@@ -158,8 +158,9 @@ The full code for the sample application can be found here:
 
 ## Message Formatting
 Messages in StellaNowSDK are wrapped in a StellaNowMessageWrapper, and each specific message type extends this class to define its own properties. Each message needs to follow a certain format, including a type, list of entities, and optional fields. Here is an example:
+
 ```python
-from stellanow_sdk_python.messages.message_base import StellaNowMessageBase
+from stellanow_sdk_python.messages.message import StellaNowMessageBase
 from models.phone_number_model import PhoneNumberModel
 
 
@@ -175,7 +176,7 @@ class UserDetailsMessage(StellaNowMessageBase):
             patronEntityId=patronEntityId,
             user_id=user_id,
             phone_number=phone_number
-            )
+        )
  ```
 
 Creating these classes by hand can be prone to errors. Therefore, we provide a command line interface (CLI) tool, [stellanow-cli](https://pypi.org/project/stellanow-cli/), to automate this task. This tool generates the code for the message classes automatically based on the configuration defined in the Operators Console.

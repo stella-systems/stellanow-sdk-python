@@ -26,7 +26,7 @@ from queue import LifoQueue
 from typing import Optional
 
 from stellanow_sdk_python.message_queue.message_queue_strategy.i_message_queue_strategy import IMessageQueueStrategy
-from stellanow_sdk_python.messages.message_wrapper import StellaNowMessageWrapper
+from stellanow_sdk_python.messages.message import StellaNowMessageWrapper
 
 
 class LifoMessageQueueStrategy(IMessageQueueStrategy):
