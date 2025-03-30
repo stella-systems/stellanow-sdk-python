@@ -21,16 +21,15 @@ IN THE SOFTWARE.
 """
 
 import json
-import pytest
 import uuid
-
 from datetime import datetime
+
+import pytest
 from pydantic import Field
-from typing import Dict
 
 from stellanow_sdk_python.messages.base import StellaNowBaseModel
-from stellanow_sdk_python.messages.message import Entity, StellaNowMessageBase, StellaNowMessageWrapper, Metadata
-from stellanow_sdk_python.messages.event import StellaNowEventWrapper, EventKey
+from stellanow_sdk_python.messages.event import EventKey, StellaNowEventWrapper
+from stellanow_sdk_python.messages.message import Entity, Metadata, StellaNowMessageBase, StellaNowMessageWrapper
 
 
 @pytest.fixture

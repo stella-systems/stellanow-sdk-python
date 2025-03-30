@@ -20,13 +20,12 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 """
 
-
 from typing import Optional
 
 from pydantic import Field
 
 from stellanow_sdk_python.messages.base import StellaNowBaseModel
-from stellanow_sdk_python.messages.message import StellaNowMessageWrapper, Entity
+from stellanow_sdk_python.messages.message import Entity, StellaNowMessageWrapper
 
 
 class EventKey(StellaNowBaseModel):
@@ -53,7 +52,7 @@ class StellaNowEventWrapper(StellaNowBaseModel):
                 organization_id=organization_id,
                 project_id=project_id,
                 entity_id=entity.entity_id,
-                entity_type_definition_id=entity.entity_type_definition_id
+                entity_type_definition_id=entity.entity_type_definition_id,
             ),
-            value=message
+            value=message,
         )

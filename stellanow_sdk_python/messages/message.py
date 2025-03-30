@@ -1,7 +1,8 @@
 import json
 import uuid
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from typing import List, Optional
+
 from pydantic import Field
 
 from stellanow_sdk_python.messages.base import StellaNowBaseModel
@@ -38,24 +39,26 @@ class StellaNowMessageWrapper(StellaNowBaseModel):
 
     @property
     def primary_entity(self) -> Entity:
-         return self.metadata.entities[0]
+        return self.metadata.entities[0]
 
     @classmethod
     def create(cls, message: StellaNowMessageBase) -> "StellaNowMessageWrapper":
         return cls.create_raw(
             event_type_definition_id=message.event_name,
             entity_types=message.entities,
-            message_json=json.dumps(message.model_dump(by_alias=True))
+            message_json=json.dumps(message.model_dump(by_alias=True)),
         )
 
     @classmethod
-    def create_raw(cls, event_type_definition_id: str, entity_types: List[Entity], message_json: str) -> "StellaNowMessageWrapper":
+    def create_raw(
+        cls, event_type_definition_id: str, entity_types: List[Entity], message_json: str
+    ) -> "StellaNowMessageWrapper":
         return StellaNowMessageWrapper(
             metadata=Metadata(
                 message_id=str(uuid.uuid4()),
-                message_origin_date_utc=datetime.now(UTC) ,
+                message_origin_date_utc=datetime.now(UTC),
                 event_type_definition_id=event_type_definition_id,
                 entity_type_ids=entity_types,
             ),
-            payload=message_json
+            payload=message_json,
         )

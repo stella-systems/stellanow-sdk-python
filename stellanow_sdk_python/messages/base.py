@@ -20,7 +20,8 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 """
 
-from datetime import datetime, date
+from datetime import date, datetime
+
 from pydantic import BaseModel, ConfigDict, model_serializer
 
 

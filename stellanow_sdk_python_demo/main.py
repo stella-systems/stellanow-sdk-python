@@ -41,23 +41,23 @@ import asyncio
 import sys
 
 from loguru import logger
-from models.phone_number_model import PhoneNumberModel
-from user_details_message import UserDetailsMessage
 
-from stellanow_sdk_python.configure_sdk import configure_dev_username_password_mqtt_lifo_sdk
+from stellanow_sdk_python.configure_sdk import configure_dev_oidc_mqtt_fifo_sdk
+from stellanow_sdk_python_demo.messages.models.phone_number_model import PhoneNumberModel
+from stellanow_sdk_python_demo.messages.user_details_update_message import UserDetailsUpdateMessage
 
 
 async def main():
     """Main entry point for the StellaNow SDK demo."""
     # sdk = configure_local_nanomq_username_password_mqtt_lifo_sdk()
-    # sdk = configure_dev_oidc_mqtt_fifo_sdk()
-    sdk = configure_dev_username_password_mqtt_lifo_sdk()
+    sdk = configure_dev_oidc_mqtt_fifo_sdk()
+    # sdk = configure_dev_username_password_mqtt_lifo_sdk()
     shutdown_event = asyncio.Event()  # Event to signal shutdown
 
     try:
         await sdk.start()
         for i in range(10):
-            message = UserDetailsMessage(
+            message = UserDetailsUpdateMessage(
                 patron="12345", user_id=f"user_{i}", phone_number=PhoneNumberModel(country_code=44, number=753594 + i)
             )
             logger.info(f"Sending message {i + 1}...")
