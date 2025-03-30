@@ -125,7 +125,7 @@ async def main():
     
     # Create and send a message
     message = UserDetailsMessage(
-        patronEntityId=uuid,
+        patron_entity_id=uuid,
         user_id=uuid,
         phone_number=PhoneNumberModel(country_code=44, number=753594)
     )
@@ -157,25 +157,26 @@ The full code for the sample application can be found here:
 >If your application shuts down before start is called again, those unsent messages will be lost because non-persistent queues do not store their contents when the application terminates.
 
 ## Message Formatting
-Messages in StellaNowSDK are wrapped in a StellaNowMessageWrapper, and each specific message type extends this class to define its own properties. Each message needs to follow a certain format, including a type, list of entities, and optional fields. Here is an example:
+Messages in StellaNowSDK are wrapped in a StellaNowEventWrapper, and each specific message type extends this class to define its own properties. Each message needs to follow a certain format, including a type, list of entities, and optional fields. Here is an example:
 
 ```python
-from stellanow_sdk_python.messages.message import StellaNowMessageBase
-from models.phone_number_model import PhoneNumberModel
+from pydantic import Field
+
+from stellanow_sdk_python.messages.message import Entity, StellaNowMessageBase
+
+from .models.phone_number_model import PhoneNumberModel
 
 
-class UserDetailsMessage(StellaNowMessageBase):
-    patronEntityId: str
-    user_id: str
-    phone_number: PhoneNumberModel
+class UserDetailsUpdateMessage(StellaNowMessageBase):
+    user_id: str = Field(None, serialization_alias="user_id")
+    phone_number: PhoneNumberModel = Field(None, serialization_alias="phone_number")
 
-    def __init__(self, patronEntityId: str, user_id: str, phone_number: PhoneNumberModel):
+    def __init__(self, patron: str, user_id: str, phone_number: PhoneNumberModel):
         super().__init__(
-            event_name="user_details",
-            entities=[{"type": "patron", "id": patronEntityId}],
-            patronEntityId=patronEntityId,
+            event_name="user_details_update",
+            entities=[Entity(entity_type_definition_id="patron", entity_id=patron)],
             user_id=user_id,
-            phone_number=phone_number
+            phone_number=phone_number,
         )
  ```
 

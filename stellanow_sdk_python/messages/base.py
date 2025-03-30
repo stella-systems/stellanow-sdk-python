@@ -21,6 +21,7 @@ IN THE SOFTWARE.
 """
 
 from datetime import date, datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, model_serializer
 
@@ -32,10 +33,10 @@ class StellaNowBaseModel(BaseModel):
     )
 
     @model_serializer(mode="wrap")
-    def serialize_model(self, default_serializer):
+    def serialize_model(self, default_serializer: Any) -> Any:
         data = default_serializer(self)
 
-        def convert_fields(obj):
+        def convert_fields(obj: Any) -> Any:
             if isinstance(obj, dict):
                 return {k: convert_fields(v) for k, v in obj.items()}
             elif isinstance(obj, list):

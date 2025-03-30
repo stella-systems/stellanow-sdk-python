@@ -48,13 +48,9 @@ def mock_message():
     class MockMessage(StellaNowMessageBase):
         user_id: str
 
-        def to_json(self) -> dict:
-            """Serialize the message fields to a dictionary, excluding entity-related fields."""
-            return {"user_id": self.user_id}
-
     return MockMessage(
         event_name="test_event",
-        entities=[Entity(entityTypeDefinitionId="test", entityId="test_id")],
+        entities=[Entity(entity_type_definition_id="test", entity_id="test_id")],
         user_id="user_98888"
     )
 

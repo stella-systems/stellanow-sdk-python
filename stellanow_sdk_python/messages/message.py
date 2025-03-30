@@ -14,10 +14,10 @@ class Entity(StellaNowBaseModel):
 
 
 class Metadata(StellaNowBaseModel):
-    message_id: Optional[str] = Field(None, serialization_alias="messageId")
-    message_origin_date_utc: Optional[datetime] = Field(None, serialization_alias="messageOriginDateUTC")
-    event_type_definition_id: Optional[str] = Field(None, serialization_alias="eventTypeDefinitionId")
-    entity_type_ids: List[Entity] = Field(None, serialization_alias="entityTypeIds")
+    message_id: Optional[str] = Field(..., serialization_alias="messageId")
+    message_origin_date_utc: Optional[datetime] = Field(..., serialization_alias="messageOriginDateUTC")
+    event_type_definition_id: Optional[str] = Field(..., serialization_alias="eventTypeDefinitionId")
+    entity_type_ids: List[Entity] = Field(..., serialization_alias="entityTypeIds")
 
     @property
     def entities(self) -> List[Entity]:

@@ -26,7 +26,7 @@ from typing import Optional
 from loguru import logger
 
 from stellanow_sdk_python.message_queue.message_queue_strategy.i_message_queue_strategy import IMessageQueueStrategy
-from stellanow_sdk_python.messages.message import StellaNowMessageWrapper
+from stellanow_sdk_python.messages.event import StellaNowEventWrapper
 from stellanow_sdk_python.sinks.i_stellanow_sink import IStellaNowSink
 
 
@@ -66,7 +66,7 @@ class StellaNowMessageQueue:
                     self._task = None
             logger.info("Message queue processing stopped.")
 
-    def enqueue(self, message: StellaNowMessageWrapper) -> None:
+    def enqueue(self, message: StellaNowEventWrapper) -> None:
         """Add a message to the queue."""
         self.strategy.enqueue(message)
         logger.info(f"Message queued with messageId: {message.message_id}, Queue size: {self.get_message_count()}")
@@ -88,7 +88,7 @@ class StellaNowMessageQueue:
                 logger.debug("No messages in queue, waiting briefly...")
                 await asyncio.sleep(0.1)
 
-    async def _send_message_to_sink(self, message: StellaNowMessageWrapper) -> None:
+    async def _send_message_to_sink(self, message: StellaNowEventWrapper) -> None:
         """Send a message to the sink with retry on failure."""
         try:
             await self.sink.send_message(message)

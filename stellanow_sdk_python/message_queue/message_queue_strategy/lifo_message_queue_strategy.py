@@ -26,7 +26,7 @@ from queue import LifoQueue
 from typing import Optional
 
 from stellanow_sdk_python.message_queue.message_queue_strategy.i_message_queue_strategy import IMessageQueueStrategy
-from stellanow_sdk_python.messages.message import StellaNowMessageWrapper
+from stellanow_sdk_python.messages.event import StellaNowEventWrapper
 
 
 class LifoMessageQueueStrategy(IMessageQueueStrategy):
@@ -35,14 +35,14 @@ class LifoMessageQueueStrategy(IMessageQueueStrategy):
     """
 
     def __init__(self) -> None:
-        self._queue: LifoQueue[StellaNowMessageWrapper] = queue.LifoQueue()
+        self._queue: LifoQueue[StellaNowEventWrapper] = queue.LifoQueue()
         self._lock = threading.Lock()
 
-    def enqueue(self, message: StellaNowMessageWrapper) -> None:
+    def enqueue(self, message: StellaNowEventWrapper) -> None:
         with self._lock:
             self._queue.put(message)
 
-    def try_dequeue(self) -> Optional[StellaNowMessageWrapper]:
+    def try_dequeue(self) -> Optional[StellaNowEventWrapper]:
         with self._lock:
             if not self._queue.empty():
                 return self._queue.get()
