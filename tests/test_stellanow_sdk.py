@@ -29,7 +29,7 @@ from stellanow_sdk_python.config.stellanow_config import project_info_from_env
 from stellanow_sdk_python.message_queue.message_queue_strategy.fifo_message_queue_strategy import (
     FifoMessageQueueStrategy,
 )
-from stellanow_sdk_python.messages.message_base import EntityType, StellaNowMessageBase
+from stellanow_sdk_python.messages.message import Entity, StellaNowMessageBase
 from stellanow_sdk_python.sdk import StellaNowSDK
 from stellanow_sdk_python.sinks.i_stellanow_sink import IStellaNowSink
 
@@ -48,13 +48,9 @@ def mock_message():
     class MockMessage(StellaNowMessageBase):
         user_id: str
 
-        def to_json(self) -> dict:
-            """Serialize the message fields to a dictionary, excluding entity-related fields."""
-            return {"user_id": self.user_id}
-
     return MockMessage(
         event_name="test_event",
-        entities=[EntityType(entityTypeDefinitionId="test", entityId="test_id")],
+        entities=[Entity(entity_type_definition_id="test", entity_id="test_id")],
         user_id="user_98888"
     )
 

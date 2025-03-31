@@ -20,24 +20,31 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 """
 
-from typing import Any, Dict, List
+from datetime import date, datetime
+from typing import Any
 
-from pydantic import BaseModel
-
-
-class EntityType(BaseModel):
-    entityTypeDefinitionId: str
-    entityId: str
-
-    def to_json(self) -> Dict[str, str]:
-        """Serialize the EntityType to a dictionary."""
-        return {"entityTypeDefinitionId": self.entityTypeDefinitionId, "entityId": self.entityId}
+from pydantic import BaseModel, ConfigDict, model_serializer
 
 
-class StellaNowMessageBase(BaseModel):
-    event_name: str
-    entities: List[EntityType]
+class StellaNowBaseModel(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+        ser_json_timedelta="iso8601",
+    )
 
-    def to_json(self) -> Dict[str, Any]:
-        """Base method to serialize the message to a dictionary."""
-        return {}
+    @model_serializer(mode="wrap")
+    def serialize_model(self, default_serializer: Any) -> Any:
+        data = default_serializer(self)
+
+        def convert_fields(obj: Any) -> Any:
+            if isinstance(obj, dict):
+                return {k: convert_fields(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [convert_fields(item) for item in obj]
+            elif isinstance(obj, datetime):
+                return obj.strftime("%Y-%m-%dT%H:%M:%S.%f") + "Z"
+            elif isinstance(obj, date):
+                return obj.isoformat()
+            return obj
+
+        return convert_fields(data)

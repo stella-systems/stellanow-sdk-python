@@ -24,7 +24,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Optional
 
-from stellanow_sdk_python.messages.message_wrapper import StellaNowMessageWrapper
+from stellanow_sdk_python.messages.event import StellaNowEventWrapper
 
 
 class MessageQueueType(Enum):
@@ -38,14 +38,14 @@ class IMessageQueueStrategy(ABC):
     """
 
     @abstractmethod
-    def enqueue(self, message: StellaNowMessageWrapper) -> None:
+    def enqueue(self, message: StellaNowEventWrapper) -> None:
         """
         Enqueues the specified message into the message_queue.
         :param message: The message in StellaNowMessageWrapper format to be queued.
         """
 
     @abstractmethod
-    def try_dequeue(self) -> Optional[StellaNowMessageWrapper]:
+    def try_dequeue(self) -> Optional[StellaNowEventWrapper]:
         """
         Attempts to dequeue a message from the message_queue.
         :return: The dequeued message if successful; otherwise, None.
