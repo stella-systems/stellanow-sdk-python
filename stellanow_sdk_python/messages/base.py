@@ -20,38 +20,31 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 """
 
-import queue
-import threading
-from queue import Queue
-from typing import Optional
+from datetime import date, datetime
+from typing import Any
 
-from stellanow_sdk_python.message_queue.message_queue_strategy.i_message_queue_strategy import IMessageQueueStrategy
-from stellanow_sdk_python.messages.message_wrapper import StellaNowMessageWrapper
+from pydantic import BaseModel, ConfigDict, model_serializer
 
 
-class FifoMessageQueueStrategy(IMessageQueueStrategy):
-    """
-    A first-in, first-out (FIFO) message_queue strategy for storing messages.
-    """
+class StellaNowBaseModel(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+        ser_json_timedelta="iso8601",
+    )
 
-    def __init__(self):
-        self._queue: Queue = queue.Queue()
-        self._lock = threading.Lock()
+    @model_serializer(mode="wrap")
+    def serialize_model(self, default_serializer: Any) -> Any:
+        data = default_serializer(self)
 
-    def enqueue(self, message: StellaNowMessageWrapper) -> None:
-        with self._lock:
-            self._queue.put(message)
+        def convert_fields(obj: Any) -> Any:
+            if isinstance(obj, dict):
+                return {k: convert_fields(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [convert_fields(item) for item in obj]
+            elif isinstance(obj, datetime):
+                return obj.strftime("%Y-%m-%dT%H:%M:%S.%f") + "Z"
+            elif isinstance(obj, date):
+                return obj.isoformat()
+            return obj
 
-    def try_dequeue(self) -> Optional[StellaNowMessageWrapper]:
-        with self._lock:
-            if not self._queue.empty():
-                return self._queue.get()
-            return None
-
-    def is_empty(self) -> bool:
-        with self._lock:
-            return self._queue.empty()
-
-    def get_message_count(self) -> int:
-        with self._lock:
-            return self._queue.qsize()
+        return convert_fields(data)

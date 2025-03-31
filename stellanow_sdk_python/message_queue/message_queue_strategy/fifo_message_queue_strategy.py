@@ -20,17 +20,38 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 """
 
-from datetime import date, datetime
+import queue
+import threading
+from queue import Queue
+from typing import Optional
+
+from stellanow_sdk_python.message_queue.message_queue_strategy.i_message_queue_strategy import IMessageQueueStrategy
+from stellanow_sdk_python.messages.event import StellaNowEventWrapper
 
 
-def convert_datetime_fields(obj):
-    """Recursively converts all datetime and date fields to ISO 8601 format with 'Z' suffix."""
-    if isinstance(obj, dict):
-        return {key: convert_datetime_fields(value) for key, value in obj.items()}
-    elif isinstance(obj, list):
-        return [convert_datetime_fields(item) for item in obj]
-    elif isinstance(obj, datetime):
-        return obj.isoformat() + "Z"
-    elif isinstance(obj, date):
-        return obj.isoformat()
-    return obj
+class FifoMessageQueueStrategy(IMessageQueueStrategy):
+    """
+    A first-in, first-out (FIFO) message_queue strategy for storing messages.
+    """
+
+    def __init__(self) -> None:
+        self._queue: Queue[StellaNowEventWrapper] = queue.Queue()
+        self._lock = threading.Lock()
+
+    def enqueue(self, message: StellaNowEventWrapper) -> None:
+        with self._lock:
+            self._queue.put(message)
+
+    def try_dequeue(self) -> Optional[StellaNowEventWrapper]:
+        with self._lock:
+            if not self._queue.empty():
+                return self._queue.get()
+            return None
+
+    def is_empty(self) -> bool:
+        with self._lock:
+            return self._queue.empty()
+
+    def get_message_count(self) -> int:
+        with self._lock:
+            return self._queue.qsize()

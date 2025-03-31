@@ -21,6 +21,7 @@ IN THE SOFTWARE.
 """
 
 import asyncio
+from typing import Any, Dict, Optional
 
 import paho.mqtt.client as mqtt
 from loguru import logger
@@ -28,17 +29,13 @@ from nanoid import generate
 
 from stellanow_sdk_python.config.eniviroment_config.stellanow_env_config import StellaNowEnvironmentConfig
 from stellanow_sdk_python.config.stellanow_config import StellaProjectInfo
-from stellanow_sdk_python.messages.message_wrapper import StellaNowMessageWrapper
+from stellanow_sdk_python.messages.event import StellaNowEventWrapper
 from stellanow_sdk_python.sinks.i_stellanow_sink import IStellaNowSink
 from stellanow_sdk_python.sinks.mqtt.auth_strategy.i_mqtt_auth_strategy import IMqttAuthStrategy
 from stellanow_sdk_python.sinks.mqtt.auth_strategy.oidc_mqtt_auth_strategy import OidcMqttAuthStrategy
 
 
 class StellaNowMqttSink(IStellaNowSink):
-    """
-    MQTT implementation of the StellaNow Sink.
-    """
-
     def __init__(
         self,
         auth_strategy: IMqttAuthStrategy,
@@ -50,131 +47,143 @@ class StellaNowMqttSink(IStellaNowSink):
         self.project_info = project_info
         self.default_qos = 1
         self.client_id = f"StellaNowSDKPython_{generate(size=10)}"
-        # Extract MQTT config from parsed URL
         mqtt_config = env_config.mqtt_url_config
 
         self.client = mqtt.Client(
-            callback_api_version=mqtt.CallbackAPIVersion.VERSION2,  # noqa
-            transport=mqtt_config.transport,  # Use parsed transport ("tcp" or "websockets")
+            callback_api_version=mqtt.CallbackAPIVersion.VERSION2,  # type: ignore[attr-defined]
+            transport=mqtt_config.transport,
             client_id=self.client_id,
         )
+        self.client.keepalive = 5
         if mqtt_config.use_tls:
-            self.client.tls_set()  # Enable TLS for mqtts or wss
+            self.client.tls_set()
 
-        self._is_connected_event = asyncio.Event()  # Renamed from is_connected
-        self.reconnect_attempts = 0
+        self._is_connected_event = asyncio.Event()
         self._shutdown = False
-        self._loop = asyncio.get_event_loop()
+        self._monitor_task: Optional[asyncio.Task[None]] = None
+
+        self.client.on_connect = self.on_connect
+        self.client.on_publish = self.on_publish
+        self.client.on_disconnect = self.on_disconnect  # type: ignore[assignment]
+
+        # Start the loop once during initialization
+        self.client.loop_start()
 
         logger.info(f'SDK Client ID is "{self.client_id}"')
 
     async def connect(self) -> None:
-        """
-        Connects to the MQTT broker.
-        """
         if self._shutdown:
             logger.info("Shutdown requested, skipping connection attempt.")
             return
-        try:
-            # Start token refresh if using OIDC
-            # if isinstance(self.auth_strategy, OidcMqttAuthStrategy):
-            #     await self.auth_strategy.auth_service.start_refresh_task()
-            await self.auth_strategy.authenticate(self.client)
-            self.client.on_connect = self.on_connect
-            self.client.on_disconnect = self.on_disconnect
-            mqtt_config = self.env_config.mqtt_url_config
-            logger.info(
-                f"Connecting to MQTT broker at {mqtt_config.hostname}:{mqtt_config.port} "
-                f"(Transport: {mqtt_config.transport}, TLS: {mqtt_config.use_tls})..."
-            )
-            self.client.connect(mqtt_config.hostname, mqtt_config.port, 60)
-            self.client.loop_start()
-            await self.wait_for_connection()
-        except Exception as e:
-            logger.error(f"Unexpected error during MQTT connection: {e}")
-            if not self._shutdown:
-                await self.handle_connection_error(e)
+        if not self._monitor_task:
+            self._monitor_task = asyncio.create_task(self._connection_monitor())
+            try:
+                await asyncio.wait_for(self._is_connected_event.wait(), timeout=None)
+                logger.info("Initial connection established")
+            except asyncio.TimeoutError:
+                logger.warning("Initial connection timed out after 30s, but monitor continues in background")
 
     async def disconnect(self) -> None:
-        """
-        Disconnects from the MQTT broker.
-        """
         logger.info("Disconnecting from MQTT broker...")
         self._shutdown = True
+        if self._monitor_task:
+            self._monitor_task.cancel()
+            try:
+                await self._monitor_task
+            except asyncio.CancelledError:
+                pass
         if isinstance(self.auth_strategy, OidcMqttAuthStrategy):
             await self.auth_strategy.auth_service.stop_refresh_task()
-        self.client.loop_stop()
         self.client.disconnect()
-        self._is_connected_event.clear()  # Updated
+        self.client.loop_stop()
+        self._is_connected_event.clear()
 
-    async def send_message(self, message: StellaNowMessageWrapper) -> None:
-        """
-        Sends a message to the MQTT broker with specified QoS.
-
-        :param message: The message to send.
-        """
-        if not self._is_connected_event.is_set():
-            raise Exception("MQTT sink is not connected.")
-        await self.wait_for_connection()
+    async def send_message(self, message: StellaNowEventWrapper) -> None:
+        if not self.is_connected():
+            logger.warning(
+                f"Cannot send message {message.message_id}: MQTT sink is disconnected. Awaiting reconnection..."
+            )
+            raise Exception("MQTT sink is disconnected; connection monitor is attempting to reconnect.")
         mqtt_topic = f"in/{self.project_info.organization_id}"
         result = self.client.publish(mqtt_topic, message.model_dump_json(), qos=self.default_qos)
-        status = result.rc
-        if status == mqtt.MQTT_ERR_SUCCESS:
-            logger.success(f"Message sent with messageId:{message.message_id}")
-        else:
-            logger.error(f"Failed to send message with messageId:{message.message_id}. Status: {status}")
-            await self.handle_publish_error(status)
+        logger.debug(f"Publish result: {result.rc}, MID: {result.mid}")
+        if result.rc != mqtt.MQTT_ERR_SUCCESS:
+            logger.error(f"Failed to send message {message.message_id}. Status: {result.rc}")
+            raise Exception(f"Publish failed with status: {result.rc}")
+        logger.debug(f"Message sent to with messageId: {message.message_id}")
 
     def is_connected(self) -> bool:
-        return self._is_connected_event.is_set()  # Updated
+        if not self._is_connected_event.is_set():
+            return False
+        # Ensure the client is still functional
+        return self.client.loop_misc() == mqtt.MQTT_ERR_SUCCESS
 
-    def on_connect(self, client, userdata, flags, reason_code, properties):  # noqa
+    def on_connect(
+        self,
+        client: mqtt.Client,  # noqa
+        userdata: Any,  # noqa
+        flags: Dict[str, Any],  # noqa
+        reason_code: mqtt.ReasonCode,  # type: ignore # noqa
+        properties: Optional[mqtt.Properties],  # type: ignore # noqa
+    ) -> None:
         if reason_code == 0:
             logger.info("Connected to MQTT broker")
-            self._is_connected_event.set()  # Updated
-            self.reconnect_attempts = 0
+            self._is_connected_event.set()
         else:
             logger.error(f"Connection failed with code {reason_code}")
-            self._is_connected_event.clear()  # Updated
-            if not self._shutdown:
-                asyncio.run_coroutine_threadsafe(
-                    self.handle_connection_error(f"Connection failed: {reason_code}"), self._loop
-                )
+            self._is_connected_event.clear()
 
-    def on_disconnect(self, client, userdata, reason_code, properties, x):  # noqa
-        logger.warning("Disconnected from MQTT broker")
-        self._is_connected_event.clear()  # Updated
-        self.client.disconnect()
-        if reason_code == mqtt.MQTT_ERR_CONN_LOST:
-            logger.error("Unexpected disconnection.")
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                loop.create_task(self.handle_connection_error(reason_code))
+    def on_publish(  # noqa
+        self,
+        client: mqtt.Client,  # noqa
+        userdata: Any,  # noqa
+        mid: int,
+        reason_code: mqtt.ReasonCode,  # type: ignore # noqa
+        properties: Optional[mqtt.Properties],  # type: ignore # noqa
+    ) -> None:
+        logger.success(f"Message published with MID: {mid}")
+
+    def on_disconnect(
+        self,
+        client: mqtt.Client,  # noqa
+        userdata: Any,  # noqa
+        flags: Dict[str, int],  # noqa
+        rc: int,
+        properties: Optional[Any] = None,  # noqa
+    ) -> None:
+        logger.warning(f"Disconnected from MQTT broker with reason: {rc}")
+        self._is_connected_event.clear()
+
+    async def _connection_monitor(self) -> None:
+        logger.info("Started connection monitor")
+        attempt = 0
+        base_delay = 5
+        max_delay = 60
+
+        while not self._shutdown:
+            logger.debug(f"Connection status: {self.is_connected()}")
+            if not self.is_connected():
+                attempt += 1
+                try:
+                    mqtt_config = self.env_config.mqtt_url_config
+                    logger.info(
+                        f"Attempting connection (Attempt {attempt}) to {mqtt_config.hostname}:{mqtt_config.port}"
+                    )
+                    await self.auth_strategy.authenticate(self.client)
+                    self.client.connect_async(mqtt_config.hostname, mqtt_config.port, keepalive=5)
+                    await asyncio.wait_for(self._is_connected_event.wait(), timeout=5.0)
+                    logger.info("Connection successful")
+                    attempt = 0
+                except asyncio.TimeoutError:
+                    logger.error(f"Connection attempt {attempt} timed out after 5 seconds")
+                except Exception as e:
+                    logger.error(f"Connection attempt {attempt} failed: {e}", exc_info=True)
+
+                if not self.is_connected() and not self._shutdown:
+                    delay = min(base_delay * (2 ** (attempt - 1)), max_delay)
+                    logger.info(f"Retrying connection in {delay} seconds...")
+                    await asyncio.sleep(delay)
             else:
-                asyncio.run(self.handle_connection_error(reason_code))
+                await asyncio.sleep(2.5)
 
-    async def wait_for_connection(self):
-        while not self._is_connected_event.is_set():  # Updated
-            await asyncio.sleep(0.5)
-
-    async def handle_connection_error(self, error):
-        """
-        Handle connection errors with retry logic
-        """
-        logger.error(f"Handling connection error: {error}")
-        backoff = min(2**self.reconnect_attempts, 60)
-        self.reconnect_attempts += 1
-        logger.info(f"Retrying connection in {backoff} seconds...")
-        await asyncio.sleep(backoff)
-        if not self._shutdown:
-            await self.connect()
-        else:
-            logger.info("Shutdown detected, aborting retry.")
-
-    async def handle_publish_error(self, error):
-        """
-        Handle publish errors and retry
-        """
-        logger.error(f"Handling publish error: {error}")
-        await self.wait_for_connection()
-        logger.info("Retrying message publish...")
+        logger.info("Connection monitor stopped")
