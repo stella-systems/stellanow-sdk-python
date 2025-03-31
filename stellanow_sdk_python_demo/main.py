@@ -54,21 +54,12 @@ async def main():
     # sdk = configure_dev_username_password_mqtt_lifo_sdk()
     shutdown_event = asyncio.Event()  # Event to signal shutdown
 
-    # TestMessage(
-    #     phone_number=PhoneNumber(country_code=48, number=700000),
-    #     user_id="user_98888",
-    #     event_name="test_event",
-    #     entities=[Entity(entity_type_definition_id="test", entity_id="test_id")]
-    # )
-
     try:
         await sdk.start()
         for i in range(10):
-            logger.info(f"I am here {i}")
             message = UserDetailsUpdateMessage(
                 patron="12345", user_id=f"user_{i}", phone_number=PhoneNumberModel(country_code=44, number=753594 + i)
             )
-            logger.info(f"I am and now here {i}")
             logger.info(f"Sending message {i + 1}...")
             await sdk.send_message(message)
             await asyncio.sleep(2)
