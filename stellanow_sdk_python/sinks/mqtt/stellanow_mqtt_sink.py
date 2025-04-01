@@ -105,7 +105,7 @@ class StellaNowMqttSink(IStellaNowSink):
             )
             raise Exception("MQTT sink is disconnected; connection monitor is attempting to reconnect.")
         mqtt_topic = f"in/{self.project_info.organization_id}"
-        result = self.client.publish(mqtt_topic, message.model_dump_json(), qos=self.default_qos)
+        result = self.client.publish(mqtt_topic, message.model_dump_json(by_alias=True), qos=self.default_qos)
         logger.debug(f"Publish result: {result.rc}, MID: {result.mid}")
         if result.rc != mqtt.MQTT_ERR_SUCCESS:
             logger.error(f"Failed to send message {message.message_id}. Status: {result.rc}")
