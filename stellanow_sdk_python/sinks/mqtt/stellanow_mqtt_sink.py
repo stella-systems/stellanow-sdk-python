@@ -156,34 +156,49 @@ class StellaNowMqttSink(IStellaNowSink):
 
     async def _connection_monitor(self) -> None:
         logger.info("Started connection monitor")
-        attempt = 0
-        base_delay = 5
-        max_delay = 60
+        attempt = 1
+        while True:
+            is_connected = self.is_connected()
+            logger.debug(f"Connection status: {is_connected}")
+            if not is_connected:
+                mqtt_config = self.env_config.mqtt_url_config
+                logger.info(f"Attempting connection (Attempt {attempt}) to {mqtt_config.hostname}:{mqtt_config.port}")
 
-        while not self._shutdown:
-            logger.debug(f"Connection status: {self.is_connected()}")
-            if not self.is_connected():
-                attempt += 1
+                logger.debug("Initializing fresh MQTT client")
+                if hasattr(self, "client") and self.client is not None:
+                    try:
+                        self.client.loop_stop()
+                    except Exception as e:
+                        logger.debug(f"Error stopping previous client: {e}")
+                    self.client = None
+
+                self.client = mqtt.Client(
+                    callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+                    transport=mqtt_config.transport,
+                    client_id=self.client_id,
+                )
+                if mqtt_config.use_tls:
+                    self.client.tls_set()
+                self.client.on_connect = self.on_connect
+                self.client.on_publish = self.on_publish
+                self.client.on_disconnect = self.on_disconnect
+
+                # Authenticate and connect
                 try:
-                    mqtt_config = self.env_config.mqtt_url_config
-                    logger.info(
-                        f"Attempting connection (Attempt {attempt}) to {mqtt_config.hostname}:{mqtt_config.port}"
-                    )
                     await self.auth_strategy.authenticate(self.client)
                     self.client.connect_async(mqtt_config.hostname, mqtt_config.port, keepalive=5)
+                    self.client.loop_start()
                     await asyncio.wait_for(self._is_connected_event.wait(), timeout=5.0)
-                    logger.info("Connection successful")
-                    attempt = 0
-                except asyncio.TimeoutError:
-                    logger.error(f"Connection attempt {attempt} timed out after 5 seconds")
+                    logger.info("Successfully connected to MQTT broker")
                 except Exception as e:
                     logger.error(f"Connection attempt {attempt} failed: {e}", exc_info=True)
-
-                if not self.is_connected() and not self._shutdown:
-                    delay = min(base_delay * (2 ** (attempt - 1)), max_delay)
-                    logger.info(f"Retrying connection in {delay} seconds...")
-                    await asyncio.sleep(delay)
-            else:
-                await asyncio.sleep(2.5)
-
-        logger.info("Connection monitor stopped")
+                    try:
+                        self.client.loop_stop()
+                    except Exception as stop_e:
+                        logger.debug(f"Error stopping loop: {stop_e}")
+                    self.client = None
+                    attempt += 1
+                    retry_delay = min(attempt * 10, 60)
+                    logger.info(f"Retrying connection in {retry_delay} seconds...")
+                    await asyncio.sleep(retry_delay)
+            await asyncio.sleep(2.5)
