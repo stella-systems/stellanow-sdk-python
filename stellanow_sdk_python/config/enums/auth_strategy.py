@@ -20,26 +20,10 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 """
 
-from uuid import UUID
-
-from stellanow_sdk_python.config.read_env import read_env_uuid
+from enum import Enum
 
 
-class StellaProjectInfo:
-    """Holds organization and project identifiers for the StellaNow SDK."""
-
-    def __init__(self, organization_id: UUID, project_id: UUID):
-        self.organization_id = organization_id
-        self.project_id = project_id
-
-    @classmethod
-    def from_env(cls) -> "StellaProjectInfo":
-        return cls(
-            organization_id=read_env_uuid("ORGANIZATION_ID"),
-            project_id=read_env_uuid("PROJECT_ID"),
-        )
-
-
-def project_info_from_env() -> StellaProjectInfo:
-    """Create a StellaProjectInfo instance from environment variables."""
-    return StellaProjectInfo.from_env()
+class AuthStrategyTypes(Enum):
+    OIDC = "oidc"
+    USERNAME_PASS = "username_password"
+    NO_AUTH = "none"

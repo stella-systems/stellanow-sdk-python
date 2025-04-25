@@ -5,7 +5,8 @@ Factory for creating MQTT authentication strategies.
 from loguru import logger
 
 from stellanow_sdk_python.config.eniviroment_config.stellanow_env_config import StellaNowEnvironmentConfig
-from stellanow_sdk_python.config.stellanow_auth_credentials import AuthStrategyTypes, StellaNowCredentials
+from stellanow_sdk_python.config.enums.auth_strategy import AuthStrategyTypes
+from stellanow_sdk_python.config.stellanow_auth_credentials import StellaNowCredentials
 from stellanow_sdk_python.config.stellanow_config import StellaProjectInfo
 from stellanow_sdk_python.sinks.mqtt.auth_strategy.i_mqtt_auth_strategy import IMqttAuthStrategy
 from stellanow_sdk_python.sinks.mqtt.auth_strategy.no_auth_mqtt_auth_strategy import NoAuthMqttAuthStrategy

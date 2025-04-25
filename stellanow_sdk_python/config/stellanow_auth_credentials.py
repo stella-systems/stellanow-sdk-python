@@ -21,19 +21,12 @@ IN THE SOFTWARE.
 """
 
 import os
-from enum import Enum
 from typing import Dict, Optional
 
 from pydantic import BaseModel
 from typing_extensions import TypedDict
 
 DEFAULT_OIDC_CLIENT_ID = "event-ingestor"
-
-
-class AuthStrategyTypes(Enum):
-    OIDC = "oidc"
-    USERNAME_PASS = "username_password"
-    NO_AUTH = "none"
 
 
 class CredentialFieldMapping(TypedDict):
