@@ -26,6 +26,8 @@ from typing import Dict, Optional
 from pydantic import BaseModel
 from typing_extensions import TypedDict
 
+from stellanow_sdk_python.config.enums.auth_strategy import AuthStrategyTypes
+
 DEFAULT_OIDC_CLIENT_ID = "event-ingestor"
 
 
@@ -39,16 +41,16 @@ class CredentialFieldMapping(TypedDict):
 
 # Define config outside the class to avoid Pydantic interference
 STRATEGY_CONFIG: Dict[str, list[CredentialFieldMapping]] = {
-    "oidc": [
+    AuthStrategyTypes.OIDC.value: [
         {"env_var": "OIDC_USERNAME", "field": "username", "required": True},
         {"env_var": "OIDC_PASSWORD", "field": "password", "required": True},
         {"env_var": "OIDC_CLIENT_ID", "field": "client_id", "required": False},
     ],
-    "username_password": [
+    AuthStrategyTypes.BASIC.value: [
         {"env_var": "MQTT_USERNAME", "field": "username", "required": True},
         {"env_var": "MQTT_PASSWORD", "field": "password", "required": True},
     ],
-    "none": [],
+    AuthStrategyTypes.NO_AUTH.value: [],
 }
 
 

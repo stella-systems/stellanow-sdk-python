@@ -25,5 +25,5 @@ from enum import Enum
 
 class AuthStrategyTypes(Enum):
     OIDC = "oidc"
-    USERNAME_PASS = "username_password"
+    BASIC = "basic"
     NO_AUTH = "none"

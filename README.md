@@ -62,12 +62,12 @@ This will:
 * Connect to the MQTT sink securely.
 
 ### Using Username/Password Authentication
-For scenarios requiring simple username/password authentication, use `configure_dev_username_password_mqtt_lifo_sdk`:
+For scenarios requiring simple username/password authentication, use `configure_dev_basic_mqtt_lifo_sdk`:
 ```python
-from stellanow_sdk_python.configure_sdk import configure_dev_username_password_mqtt_lifo_sdk
+from stellanow_sdk_python.configure_sdk import configure_dev_basic_mqtt_lifo_sdk
 
 async def main():
-    sdk = configure_dev_username_password_mqtt_lifo_sdk()
+    sdk = configure_dev_basic_mqtt_lifo_sdk()
     await sdk.start()
 ```
 
@@ -76,7 +76,7 @@ This will:
 - Connect to the MQTT sink with the specified transport and TLS settings.
 
 ### Using No Authentication
-For local development or scenarios where authentication is not required, use configure_local_nanomq_username_password_mqtt_fifo_sdk or configure_prod_none_mqtt_fifo_sdk:
+For local development or scenarios where authentication is not required, use configure_local_nanomq_basic_mqtt_fifo_sdk or configure_prod_none_mqtt_fifo_sdk:
 
 ```python
 from stellanow_sdk_python.configure_sdk import configure_prod_none_mqtt_fifo_sdk

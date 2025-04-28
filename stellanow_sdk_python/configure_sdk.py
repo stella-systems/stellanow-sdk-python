@@ -51,7 +51,7 @@ def configure_sdk(
     Generic method to configure and return a StellaNowSDK instance.
 
     Args:
-        auth_strategy_type (str): Authentication strategy ("oidc", "username_password", "none").
+        auth_strategy_type (str): Authentication strategy ("oidc", "basic", "none").
         env_config (StellaNowEnvironmentConfig): Environment configuration (e.g., from EnvConfig).
         queue_strategy_type (str, optional): Queue strategy ("fifo" or "lifo"). Defaults to "fifo".
         logger_level (LoggerLevel, optional): Logging level for the SDK. Defaults to LoggerLevel.INFO.
@@ -124,34 +124,34 @@ def configure_dev_no_auth_mqtt_fifo_sdk(logger_level: LoggerLevel = LoggerLevel.
     )
 
 
-def configure_dev_username_password_mqtt_lifo_sdk(logger_level: LoggerLevel = LoggerLevel.INFO) -> StellaNowSDK:
-    """Configure SDK for stellanow_dev env with username/password auth, MQTT sink, and LIFO queue."""
+def configure_dev_basic_mqtt_lifo_sdk(logger_level: LoggerLevel = LoggerLevel.INFO) -> StellaNowSDK:
+    """Configure SDK for stellanow_dev env with basic auth, MQTT sink, and LIFO queue."""
     return configure_sdk(
-        auth_strategy_type=AuthStrategyTypes.USERNAME_PASS.value,
+        auth_strategy_type=AuthStrategyTypes.BASIC.value,
         env_config=EnvConfig.stellanow_dev(),
         queue_strategy_type=MessageQueueType.LIFO.value,
         logger_level=logger_level,
     )
 
 
-def configure_local_nanomq_username_password_mqtt_fifo_sdk(
+def configure_local_nanomq_basic_mqtt_fifo_sdk(
     logger_level: LoggerLevel = LoggerLevel.INFO,
 ) -> StellaNowSDK:
-    """Configure SDK for local NanoMQ env with username/password auth, MQTT sink, and FIFO queue."""
+    """Configure SDK for local NanoMQ env with basic auth, MQTT sink, and FIFO queue."""
     return configure_sdk(
-        auth_strategy_type=AuthStrategyTypes.USERNAME_PASS.value,
+        auth_strategy_type=AuthStrategyTypes.BASIC.value,
         env_config=EnvConfig.nanomq_local(),
         queue_strategy_type=MessageQueueType.FIFO.value,
         logger_level=logger_level,
     )
 
 
-def configure_local_nanomq_username_password_mqtt_lifo_sdk(
+def configure_local_nanomq_basic_mqtt_lifo_sdk(
     logger_level: LoggerLevel = LoggerLevel.INFO,
 ) -> StellaNowSDK:
-    """Configure SDK for local NanoMQ env with username/password auth, MQTT sink, and LIFO queue."""
+    """Configure SDK for local NanoMQ env with basic auth, MQTT sink, and LIFO queue."""
     return configure_sdk(
-        auth_strategy_type=AuthStrategyTypes.USERNAME_PASS.value,
+        auth_strategy_type=AuthStrategyTypes.BASIC.value,
         env_config=EnvConfig.nanomq_local(),
         queue_strategy_type=MessageQueueType.LIFO.value,
         logger_level=logger_level,
@@ -178,10 +178,10 @@ def configure_prod_no_auth_mqtt_fifo_sdk(logger_level: LoggerLevel = LoggerLevel
     )
 
 
-def configure_prod_username_password_mqtt_fifo_sdk(logger_level: LoggerLevel = LoggerLevel.INFO) -> StellaNowSDK:
-    """Configure SDK for stellanow_prod env with username/password auth, MQTT sink, and FIFO queue."""
+def configure_prod_basic_mqtt_fifo_sdk(logger_level: LoggerLevel = LoggerLevel.INFO) -> StellaNowSDK:
+    """Configure SDK for stellanow_prod env with basic auth, MQTT sink, and FIFO queue."""
     return configure_sdk(
-        auth_strategy_type=AuthStrategyTypes.USERNAME_PASS.value,
+        auth_strategy_type=AuthStrategyTypes.BASIC.value,
         env_config=EnvConfig.stellanow_prod(),
         queue_strategy_type=MessageQueueType.FIFO.value,
         logger_level=logger_level,

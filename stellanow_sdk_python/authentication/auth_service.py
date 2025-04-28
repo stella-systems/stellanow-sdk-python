@@ -157,18 +157,17 @@ class StellaNowAuthenticationService:
                 logger.info("Refreshing access token...")
                 self.token_response = await self.keycloak_openid.a_refresh_token(refresh_token)
                 self.token_expires = self._calculate_token_expires_time(self.token_response)
+                access_token: str = self.token_response["access_token"]
                 logger.info("Access token refreshed successfully.")
-                logger.debug(
-                    f"Refreshed token: {self.token_response['access_token'][:20]}..., expires: {self.token_expires}"
-                )
+                logger.debug(f"Refreshed token: {access_token[:20]}..., expires: {self.token_expires}")
                 # Notify callbacks of new token
                 for callback in self._token_update_callbacks:
                     try:
-                        await callback(self.token_response["access_token"])
+                        await callback(access_token)
                     except Exception as e:
                         logger.error(f"Token update callback failed: {e}")
                 assert self.token_response is not None
-                return self.token_response["access_token"]
+                return access_token
             except KeycloakError as e:
                 logger.error(f"Failed to refresh access token: {e}")
                 raise Exception("Failed to refresh access token")
