@@ -49,9 +49,7 @@ from stellanow_sdk_python_demo.messages.user_details_update_message import UserD
 
 async def main():
     """Main entry point for the StellaNow SDK demo."""
-    # sdk = configure_local_nanomq_username_password_mqtt_lifo_sdk()
     sdk = configure_dev_oidc_mqtt_fifo_sdk()
-    # sdk = configure_dev_username_password_mqtt_lifo_sdk()
     shutdown_event = asyncio.Event()  # Event to signal shutdown
 
     try:

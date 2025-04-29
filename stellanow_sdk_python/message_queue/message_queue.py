@@ -85,7 +85,6 @@ class StellaNowMessageQueue:
                     logger.debug(f"Dequeued message {message.message_id}, Queue size: {self.get_message_count()}")
                     await self._send_message_to_sink(message)
             else:
-                logger.debug("No messages in queue, waiting briefly...")
                 await asyncio.sleep(0.1)
 
     async def _send_message_to_sink(self, message: StellaNowEventWrapper) -> None:

@@ -22,6 +22,7 @@ IN THE SOFTWARE.
 
 import os
 from typing import Optional
+from uuid import UUID
 
 from loguru import logger
 
@@ -45,3 +46,24 @@ def read_env(name: str, missing: Optional[str] = None) -> str:
         logger.error(f"Required environment variable '{name}' is not set")
         raise ValueError(f"Required environment variable '{name}' is not set")
     return value
+
+
+def read_env_uuid(name: str) -> UUID:
+    """
+    Read an environment variable and ensure it is a valid UUID.
+
+    Args:
+        name (str): The name of the environment variable.
+
+    Returns:
+        UUID: The UUID value of the environment variable.
+
+    Raises:
+        ValueError: If the environment variable is not set or is not a valid UUID.
+    """
+    value = read_env(name)
+    try:
+        return UUID(value)
+    except ValueError:
+        logger.error(f"Environment variable '{name}' with value '{value}' is not a valid UUID")
+        raise ValueError(f"Environment variable '{name}' with value '{value}' is not a valid UUID")

@@ -5,7 +5,8 @@ Factory for creating MQTT authentication strategies.
 from loguru import logger
 
 from stellanow_sdk_python.config.eniviroment_config.stellanow_env_config import StellaNowEnvironmentConfig
-from stellanow_sdk_python.config.stellanow_auth_credentials import AuthStrategyTypes, StellaNowCredentials
+from stellanow_sdk_python.config.enums.auth_strategy import AuthStrategyTypes
+from stellanow_sdk_python.config.stellanow_auth_credentials import StellaNowCredentials
 from stellanow_sdk_python.config.stellanow_config import StellaProjectInfo
 from stellanow_sdk_python.sinks.mqtt.auth_strategy.i_mqtt_auth_strategy import IMqttAuthStrategy
 from stellanow_sdk_python.sinks.mqtt.auth_strategy.no_auth_mqtt_auth_strategy import NoAuthMqttAuthStrategy
@@ -23,7 +24,7 @@ def create_auth_strategy(
     Create an authentication strategy based on the specified type.
 
     Args:
-        auth_strategy_type (str): The type of authentication ("oidc", "username_password", "none").
+        auth_strategy_type (str): The type of authentication ("oidc", "basic", "none").
         project_info (StellaProjectInfo): Project information including organization_id.
         credentials (StellaNowCredentials): The credentials object containing auth details.
         env_config (StellaNowEnvironmentConfig): The environment configuration.
@@ -41,7 +42,7 @@ def create_auth_strategy(
     logger.info(f"Creating auth strategy: {auth_strategy_type}")
     if auth_strategy_type == AuthStrategyTypes.OIDC.value:
         return OidcMqttAuthStrategy(project_info, credentials, env_config)
-    elif auth_strategy_type == AuthStrategyTypes.USERNAME_PASS.value:
+    elif auth_strategy_type == AuthStrategyTypes.BASIC.value:
         return UserPassAuthMqttAuthStrategy(credentials)
     elif auth_strategy_type == AuthStrategyTypes.NO_AUTH.value:
         return NoAuthMqttAuthStrategy()
