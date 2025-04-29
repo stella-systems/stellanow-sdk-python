@@ -20,26 +20,20 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 """
 
-from uuid import UUID
+import asyncio
 
-from stellanow_sdk_python.config.read_env import read_env_uuid
-
-
-class StellaProjectInfo:
-    """Holds organization and project identifiers for the StellaNow SDK."""
-
-    def __init__(self, organization_id: UUID, project_id: UUID):
-        self.organization_id = organization_id
-        self.project_id = project_id
-
-    @classmethod
-    def from_env(cls) -> "StellaProjectInfo":
-        return cls(
-            organization_id=read_env_uuid("ORGANIZATION_ID"),
-            project_id=read_env_uuid("PROJECT_ID"),
-        )
+import pytest
 
 
-def project_info_from_env() -> StellaProjectInfo:
-    """Create a StellaProjectInfo instance from environment variables."""
-    return StellaProjectInfo.from_env()
+@pytest.fixture(autouse=True)
+async def cleanup_sdk():
+    """Fixture to clean up SDK and message queue tasks after each test."""
+    yield
+    # Stop any running SDK or message queue tasks
+    for task in asyncio.all_tasks():
+        if task.get_coro().__qualname__.startswith("StellaNowMessageQueue._process_queue"):
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass

@@ -49,8 +49,9 @@ class StellaNowMqttSink(IStellaNowSink):
         self.client_id = f"StellaNowSDKPython_{generate(size=10)}"
         mqtt_config = env_config.mqtt_url_config
 
-        self.client = mqtt.Client(
+        self.client: Optional[mqtt.Client] = mqtt.Client(
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2,  # type: ignore[attr-defined]
+            protocol=mqtt.MQTTv5,
             transport=mqtt_config.transport,
             client_id=self.client_id,
         )
@@ -94,12 +95,13 @@ class StellaNowMqttSink(IStellaNowSink):
                 pass
         if isinstance(self.auth_strategy, OidcMqttAuthStrategy):
             await self.auth_strategy.auth_service.stop_refresh_task()
-        self.client.disconnect()
-        self.client.loop_stop()
-        self._is_connected_event.clear()
+        if self.client is not None:
+            self.client.disconnect()
+            self.client.loop_stop()
+            self._is_connected_event.clear()
 
     async def send_message(self, message: StellaNowEventWrapper) -> None:
-        if not self.is_connected():
+        if not self.is_connected() or self.client is None:
             logger.warning(
                 f"Cannot send message {message.message_id}: MQTT sink is disconnected. Awaiting reconnection..."
             )
@@ -151,7 +153,8 @@ class StellaNowMqttSink(IStellaNowSink):
         rc: int,
         properties: Optional[Any] = None,  # noqa
     ) -> None:
-        logger.warning(f"Disconnected from MQTT broker with reason: {rc}")
+        reason_str = mqtt.error_string(rc)
+        logger.warning(f"Disconnected from MQTT broker with reason code {rc}: {reason_str}")
         self._is_connected_event.clear()
 
     async def _connection_monitor(self) -> None:
@@ -159,7 +162,6 @@ class StellaNowMqttSink(IStellaNowSink):
         attempt = 1
         while True:
             is_connected = self.is_connected()
-            logger.debug(f"Connection status: {is_connected}")
             if not is_connected:
                 mqtt_config = self.env_config.mqtt_url_config
                 logger.info(f"Attempting connection (Attempt {attempt}) to {mqtt_config.hostname}:{mqtt_config.port}")
@@ -172,8 +174,9 @@ class StellaNowMqttSink(IStellaNowSink):
                         logger.debug(f"Error stopping previous client: {e}")
                     self.client = None
 
-                self.client = mqtt.Client(
-                    callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+                self.client: Optional[mqtt.Client] = mqtt.Client(
+                    callback_api_version=mqtt.CallbackAPIVersion.VERSION2,  # type: ignore[attr-defined]
+                    protocol=mqtt.MQTTv5,
                     transport=mqtt_config.transport,
                     client_id=self.client_id,
                 )
@@ -181,7 +184,7 @@ class StellaNowMqttSink(IStellaNowSink):
                     self.client.tls_set()
                 self.client.on_connect = self.on_connect
                 self.client.on_publish = self.on_publish
-                self.client.on_disconnect = self.on_disconnect
+                self.client.on_disconnect = self.on_disconnect  # type: ignore[assignment]
 
                 # Authenticate and connect
                 try:

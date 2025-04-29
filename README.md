@@ -62,12 +62,12 @@ This will:
 * Connect to the MQTT sink securely.
 
 ### Using Username/Password Authentication
-For scenarios requiring simple username/password authentication, use `configure_dev_username_password_mqtt_lifo_sdk`:
+For scenarios requiring simple username/password authentication, use `configure_dev_basic_mqtt_lifo_sdk`:
 ```python
-from stellanow_sdk_python.configure_sdk import configure_dev_username_password_mqtt_lifo_sdk
+from stellanow_sdk_python.configure_sdk import configure_dev_basic_mqtt_lifo_sdk
 
 async def main():
-    sdk = configure_dev_username_password_mqtt_lifo_sdk()
+    sdk = configure_dev_basic_mqtt_lifo_sdk()
     await sdk.start()
 ```
 
@@ -76,7 +76,7 @@ This will:
 - Connect to the MQTT sink with the specified transport and TLS settings.
 
 ### Using No Authentication
-For local development or scenarios where authentication is not required, use configure_local_nanomq_username_password_mqtt_fifo_sdk or configure_prod_none_mqtt_fifo_sdk:
+For local development or scenarios where authentication is not required, use configure_local_nanomq_basic_mqtt_fifo_sdk or configure_prod_none_mqtt_fifo_sdk:
 
 ```python
 from stellanow_sdk_python.configure_sdk import configure_prod_none_mqtt_fifo_sdk
@@ -107,37 +107,88 @@ This script is the main entry point for our demonstration. The main function doe
 - Finally, it disconnects from StellaNow.
 ```python
 import asyncio
+import sys
 from stellanow_sdk_python.configure_sdk import configure_dev_oidc_mqtt_fifo_sdk
-from stellanow_sdk_python_demo.models.user_details_message import UserDetailsMessage, PhoneNumberModel
+from stellanow_sdk_python_demo.messages.models.phone_number_model import PhoneNumberModel
+from stellanow_sdk_python_demo.messages.user_details_update_message import UserDetailsUpdateMessage
 from loguru import logger
 
 async def main():
-    # Establish connection
+    """Main entry point for the StellaNow SDK demo."""
     sdk = configure_dev_oidc_mqtt_fifo_sdk()
-    await sdk.start()
+    shutdown_event = asyncio.Event()  # Event to signal shutdown
 
-    logger.info("Press Ctrl+C to stop the application!")
+    try:
+        await sdk.start()
+        for i in range(10):
+            message = UserDetailsUpdateMessage(
+                patron="12345", user_id=f"user_{i}", phone_number=PhoneNumberModel(country_code=44, number=753594 + i)
+            )
+            logger.info(f"Sending message {i + 1}...")
+            await sdk.send_message(message)
+            await asyncio.sleep(2)
+        logger.info("Initial messages sent. Keeping SDK alive...")
+        await shutdown_event.wait()  # Wait indefinitely until shutdown
     
-    # Ensure connection is established
-    await asyncio.sleep(5)
+    except KeyboardInterrupt:
+        logger.warning("Received Ctrl+C, shutting down gracefully...")
+        shutdown_event.set()  # Signal shutdown
+        await sdk.stop()
+    except Exception as e:
+        logger.error(f"Unexpected error occurred: {e}")
+        await sdk.stop()
+        sys.exit(1)
 
-    uuid = "user_12345"
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+### Setting the Message Origin Timestamp
+
+The `message_origin_date_utc` field in a `StellaNowMessageBase`-derived message specifies the UTC timestamp when the message was created. This field is optional but highly recommended for accurate event tracking and auditing in the StellaNow Platform. The timestamp must be in ISO 8601 format with microseconds and a `Z` suffix (e.g., `2025-04-25T12:34:56.789012Z`) when serialized.
+
+#### Requirements
+- **Type**: Python `datetime` object or ISO 8601 string.
+- **Format**: If provided as a string, it must include microseconds and end with `Z` (e.g., `2025-04-25T12:34:56.789012Z`).
+- **Timezone**: Must represent UTC time. Non-UTC `datetime` objects will raise a validation error.
+- **Validation**: The SDK validates the timestamp to ensure it meets these requirements. Invalid formats will raise a `ValueError`.
+
+#### Setting `message_origin_date_utc`
+Set `message_origin_date_utc` after creating a message by assigning a `datetime` object or a valid ISO 8601 string to the `message_origin_date_utc` property. If not set, the field remains `None` in the message object, but the SDK automatically assigns the current UTC time when the message is wrapped in a `StellaNowMessageWrapper` (e.g., during `sdk.send_message`).
+```python
+import asyncio
+import sys
+from stellanow_sdk_python.configure_sdk import configure_dev_oidc_mqtt_fifo_sdk
+from stellanow_sdk_python_demo.messages.models.phone_number_model import PhoneNumberModel
+from stellanow_sdk_python_demo.messages.user_details_update_message import UserDetailsUpdateMessage
+from loguru import logger
+
+async def main():
+    """Main entry point for the StellaNow SDK demo."""
+    sdk = configure_dev_oidc_mqtt_fifo_sdk()
+    shutdown_event = asyncio.Event()  # Event to signal shutdown
+
+    try:
+        await sdk.start()
+        for i in range(10):
+            message = UserDetailsUpdateMessage(
+                patron="12345", user_id=f"user_{i}", phone_number=PhoneNumberModel(country_code=44, number=753594 + i)
+            )
+            message.message_origin_date_utc = "2025-04-25T12:34:56.789012Z"
+            logger.info(f"Sending message {i + 1}...")
+            await sdk.send_message(message)
+            await asyncio.sleep(2)
+        logger.info("Initial messages sent. Keeping SDK alive...")
+        await shutdown_event.wait()  # Wait indefinitely until shutdown
     
-    # Create and send a message
-    message = UserDetailsMessage(
-        patron_entity_id=uuid,
-        user_id=uuid,
-        phone_number=PhoneNumberModel(country_code=44, number=753594)
-    )
-    
-    await sdk.send_message(message)
-    logger.info("New Message Queued")
-    
-    # Delay to observe
-    await asyncio.sleep(1)
-    
-    # Disconnect and terminate
-    await sdk.stop()
+    except KeyboardInterrupt:
+        logger.warning("Received Ctrl+C, shutting down gracefully...")
+        shutdown_event.set()  # Signal shutdown
+        await sdk.stop()
+    except Exception as e:
+        logger.error(f"Unexpected error occurred: {e}")
+        await sdk.stop()
+        sys.exit(1)
 
 if __name__ == "__main__":
     asyncio.run(main())
@@ -161,10 +212,8 @@ Messages in StellaNowSDK are wrapped in a StellaNowEventWrapper, and each specif
 
 ```python
 from pydantic import Field
-
+from stellanow_sdk_python_demo.messages.models.phone_number_model import PhoneNumberModel
 from stellanow_sdk_python.messages.message import Entity, StellaNowMessageBase
-
-from .models.phone_number_model import PhoneNumberModel
 
 
 class UserDetailsUpdateMessage(StellaNowMessageBase):

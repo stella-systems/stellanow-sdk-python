@@ -21,18 +21,23 @@ IN THE SOFTWARE.
 """
 
 from typing import Optional
+from uuid import UUID
 
-from pydantic import Field
+from pydantic import Field, field_serializer
 
 from stellanow_sdk_python.messages.base import StellaNowBaseModel
 from stellanow_sdk_python.messages.message import Entity, StellaNowMessageWrapper
 
 
 class EventKey(StellaNowBaseModel):
-    organization_id: str = Field(..., serialization_alias="organizationId")
-    project_id: str = Field(..., serialization_alias="projectId")
+    organization_id: UUID = Field(..., serialization_alias="organizationId")
+    project_id: UUID = Field(..., serialization_alias="projectId")
     entity_id: str = Field(..., serialization_alias="entityId")
     entity_type_definition_id: str = Field(..., serialization_alias="entityTypeDefinitionId")
+
+    @field_serializer("organization_id", "project_id")
+    def serialize_uuid(self, value: UUID) -> str:
+        return str(value)
 
 
 class StellaNowEventWrapper(StellaNowBaseModel):
@@ -44,7 +49,9 @@ class StellaNowEventWrapper(StellaNowBaseModel):
         return self.value.message_id
 
     @classmethod
-    def create(cls, message: StellaNowMessageWrapper, organization_id: str, project_id: str) -> "StellaNowEventWrapper":
+    def create(
+        cls, message: StellaNowMessageWrapper, organization_id: UUID, project_id: UUID
+    ) -> "StellaNowEventWrapper":
         entity: Entity = message.primary_entity
 
         return cls(
