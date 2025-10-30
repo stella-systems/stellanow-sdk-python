@@ -20,24 +20,25 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 """
 
-import paho.mqtt.client as mqtt
-from loguru import logger
-
-from stellanow_sdk_python.config.stellanow_auth_credentials import StellaNowCredentials
-from stellanow_sdk_python.sinks.mqtt.auth_strategy.i_mqtt_auth_strategy import IMqttAuthStrategy
+from enum import Enum
 
 
-class UserPassAuthMqttAuthStrategy(IMqttAuthStrategy):
-    """Username/password authentication strategy for MQTT connections."""
+class OverflowStrategy(Enum):
+    """Strategy for handling queue overflow when max_size is reached."""
 
-    def __init__(self, credentials: StellaNowCredentials):
-        self.credentials = credentials
+    DROP_OLDEST = "drop_oldest"  # Drop oldest message, accept new (default behavior)
+    DROP_NEWEST = "drop_newest"  # Reject new message, keep oldest
+    RAISE_EXCEPTION = "raise_exception"  # Raise QueueFullError, let application decide
 
-    async def authenticate(self, client: mqtt.Client) -> None:
-        logger.info("Authenticating MQTT client using username/password.")
-        try:
-            password_value = self.credentials.password.get_secret_value() if self.credentials.password else None
-            client.username_pw_set(self.credentials.username, password_value)
-        except (ValueError, RuntimeError) as e:
-            logger.error(f"Username/password authentication failed: {e}")
-            raise ValueError("Failed to authenticate MQTT client using username/password.")
+
+class QueueFullError(Exception):
+    """Raised when queue is full and overflow strategy is RAISE_EXCEPTION."""
+
+    def __init__(self, queue_size: int, dropped_count: int, message_id: str):
+        self.queue_size = queue_size
+        self.dropped_count = dropped_count
+        self.message_id = message_id
+        super().__init__(
+            f"Message queue is full (size: {queue_size}, total dropped: {dropped_count}). "
+            f"Cannot accept message {message_id}. Wait for queue to drain or increase max_size."
+        )

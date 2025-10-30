@@ -72,7 +72,20 @@ class StellaNowMessageQueue:
         logger.info(f"Message queued with messageId: {message.message_id}, Queue size: {self.get_message_count()}")
 
     async def _process_queue(self) -> None:
-        """Process the queue asynchronously with connection handling."""
+        """
+        Background task that continuously processes messages from the queue.
+
+        This method runs in the background and:
+        1. Checks if the sink is connected
+        2. If disconnected, waits for reconnection before processing
+        3. Dequeues messages one at a time
+        4. Sends each message to the sink
+        5. Re-queues messages that fail to send (with 1 second delay)
+        6. Sleeps briefly (0.1s) when queue is empty
+
+        The processing continues until stop_processing() is called.
+        Messages are processed according to the configured queue strategy (FIFO/LIFO).
+        """
         logger.info(f"Starting queue processing with initial queue size: {self.get_message_count()}")
         while self.processing:
             if not self.sink.is_connected():
@@ -88,18 +101,42 @@ class StellaNowMessageQueue:
                 await asyncio.sleep(0.1)
 
     async def _send_message_to_sink(self, message: StellaNowEventWrapper) -> None:
-        """Send a message to the sink with retry on failure."""
+        """
+        Send a message to the sink with automatic retry on failure.
+
+        This method attempts to send a message to the configured sink (e.g., MQTT).
+        If the send operation fails due to connection issues, the message is
+        automatically re-queued for another attempt after a 1 second delay.
+
+        Args:
+            message: The StellaNowEventWrapper to send to the sink
+
+        Note:
+            Common failure scenarios include ConnectionError, RuntimeError,
+            ValueError, and asyncio.TimeoutError. All failures result in
+            re-queuing to prevent message loss.
+        """
         try:
             await self.sink.send_message(message)
             logger.success(f"Message sent successfully with messageId: {message.message_id}")
-        except Exception as e:
+        except (ConnectionError, RuntimeError, ValueError, asyncio.TimeoutError) as e:
             logger.error(f"Failed to send message {message.message_id}: {e}")
             self.strategy.enqueue(message)
             logger.warning(f"Message {message.message_id} re-queued, Queue size: {self.get_message_count()}")
             await asyncio.sleep(1)
 
     async def _wait_for_connection(self) -> None:
-        """Wait for the sink to reconnect."""
+        """
+        Wait for the sink to reconnect before resuming queue processing.
+
+        This method continuously checks the sink's connection status every 0.5 seconds
+        until either the sink reconnects or the queue processing is stopped.
+        It's called by _process_queue() when a disconnection is detected.
+
+        The method will exit when:
+        - The sink successfully reconnects (is_connected() returns True)
+        - Queue processing is stopped (self.processing becomes False)
+        """
         while self.processing and not self.sink.is_connected():
             logger.debug("Waiting for sink to reconnect...")
             await asyncio.sleep(0.5)
