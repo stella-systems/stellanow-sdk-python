@@ -42,8 +42,9 @@ class _StellaNowEnvironmentConfigImpl:
         if api_base_url is not None:
             if not api_base_url.startswith(("http://", "https://")):
                 raise ValueError(f"Invalid api_base_url: must start with http:// or https://, got: {api_base_url}")
+            # Auto-truncate trailing slash if present
             if api_base_url.endswith("/"):
-                raise ValueError(f"Invalid api_base_url: must not end with /, got: {api_base_url}")
+                api_base_url = api_base_url.rstrip("/")
 
         self.api_base_url = api_base_url
 
@@ -51,8 +52,7 @@ class _StellaNowEnvironmentConfigImpl:
     def authority(self) -> str:
         if self.api_base_url is None:
             raise RuntimeError(
-                "api_base_url is not configured. "
-                "OIDC authentication requires api_base_url. "
+                "api_base_url is not configured. OIDC authentication requires api_base_url. "
                 "Use EnvConfig.stellanow_prod() or EnvConfig.stellanow_dev() for predefined configs, "
                 "or provide api_base_url when creating custom environment."
             )
