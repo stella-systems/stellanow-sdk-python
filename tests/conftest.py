@@ -21,8 +21,13 @@ IN THE SOFTWARE.
 """
 
 import asyncio
+from uuid import UUID
 
 import pytest
+
+# Test constants
+TEST_ORG_ID = UUID("12345678-1234-5678-1234-567812345678")
+TEST_PROJECT_ID = UUID("87654321-4321-8765-4321-876543218765")
 
 
 @pytest.fixture(autouse=True)

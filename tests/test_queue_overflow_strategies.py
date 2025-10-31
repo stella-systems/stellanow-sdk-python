@@ -20,7 +20,6 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 """
 
-from uuid import UUID
 
 import pytest
 
@@ -33,6 +32,7 @@ from stellanow_sdk_python.message_queue.message_queue_strategy.lifo_message_queu
 from stellanow_sdk_python.message_queue.message_queue_strategy.overflow_strategy import OverflowStrategy, QueueFullError
 from stellanow_sdk_python.messages.event import StellaNowEventWrapper
 from stellanow_sdk_python.messages.message import Entity, StellaNowMessageBase, StellaNowMessageWrapper
+from tests.conftest import TEST_ORG_ID, TEST_PROJECT_ID
 
 
 class SampleMessage(StellaNowMessageBase):
@@ -54,91 +54,112 @@ def create_test_message(message_id: str) -> StellaNowEventWrapper:
 
     return StellaNowEventWrapper.create(
         message=wrapper,
-        organization_id=UUID("00000000-0000-0000-0000-000000000000"),
-        project_id=UUID("00000000-0000-0000-0000-000000000000"),
+        organization_id=TEST_ORG_ID,
+        project_id=TEST_PROJECT_ID,
     )
 
 
-class TestFifoDropOldest:
-    """Tests for FIFO queue with DROP_OLDEST strategy."""
+class TestQueueOverflowBehavior:
+    """Tests for queue overflow behavior with consistent setup across strategies."""
 
-    def test_drop_oldest_when_full(self):
-        """Test that oldest messages are dropped when queue is full."""
+    def test_fifo_drop_oldest(self):
+        """Test FIFO queue drops oldest messages when full."""
         queue = FifoMessageQueueStrategy(max_size=3, overflow_strategy=OverflowStrategy.DROP_OLDEST)
 
-        # Fill queue to capacity
-        msg1 = create_test_message("msg1")
-        msg2 = create_test_message("msg2")
-        msg3 = create_test_message("msg3")
-        queue.enqueue(msg1)
-        queue.enqueue(msg2)
-        queue.enqueue(msg3)
-
-        assert queue.get_message_count() == 3
-        assert queue.get_dropped_count() == 0
-
-        # Add 4th message - should drop msg1
-        msg4 = create_test_message("msg4")
-        queue.enqueue(msg4)
-
-        assert queue.get_message_count() == 3
-        assert queue.get_dropped_count() == 1
-
-        # Dequeue and verify msg1 was dropped, msg2 is now first
-        dequeued = queue.try_dequeue()
-        assert dequeued.message_id == "msg2"
-
-    def test_multiple_drops(self):
-        """Test multiple messages being dropped."""
-        queue = FifoMessageQueueStrategy(max_size=2, overflow_strategy=OverflowStrategy.DROP_OLDEST)
-
-        for i in range(10):
+        # Produce 6 messages
+        for i in range(6):
             queue.enqueue(create_test_message(f"msg{i}"))
 
-        assert queue.get_message_count() == 2
-        assert queue.get_dropped_count() == 8
+        # Consume 2 (msg3, msg4)
+        assert queue.try_dequeue().message_id == "msg3"
+        assert queue.try_dequeue().message_id == "msg4"
 
-        # Should have msg8 and msg9
+        # Produce 4 more (msg6 through msg9)
+        for i in range(6, 10):
+            queue.enqueue(create_test_message(f"msg{i}"))
+
+        # Should have msg7, msg8, msg9 (msg5, msg6 were dropped)
+        assert queue.get_message_count() == 3
+        assert queue.get_dropped_count() == 5  # msg0, msg1, msg2, msg5, msg6
+        assert queue.try_dequeue().message_id == "msg7"
         assert queue.try_dequeue().message_id == "msg8"
         assert queue.try_dequeue().message_id == "msg9"
 
-
-class TestFifoDropNewest:
-    """Tests for FIFO queue with DROP_NEWEST strategy."""
-
-    def test_drop_newest_when_full(self):
-        """Test that newest messages are rejected when queue is full."""
+    def test_fifo_drop_newest(self):
+        """Test FIFO queue rejects newest messages when full."""
         queue = FifoMessageQueueStrategy(max_size=3, overflow_strategy=OverflowStrategy.DROP_NEWEST)
 
-        # Fill queue to capacity
-        msg1 = create_test_message("msg1")
-        msg2 = create_test_message("msg2")
-        msg3 = create_test_message("msg3")
-        queue.enqueue(msg1)
-        queue.enqueue(msg2)
-        queue.enqueue(msg3)
+        # Produce 6 messages (msg3, msg4, msg5 rejected)
+        for i in range(6):
+            queue.enqueue(create_test_message(f"msg{i}"))
 
-        assert queue.get_message_count() == 3
-
-        # Try to add 4th message - should be rejected
-        msg4 = create_test_message("msg4")
-        queue.enqueue(msg4)
-
-        assert queue.get_message_count() == 3  # Still 3
-        assert queue.get_dropped_count() == 1
-
-        # Dequeue and verify msg1, msg2, msg3 are preserved
+        # Consume 2 (msg0, msg1)
+        assert queue.try_dequeue().message_id == "msg0"
         assert queue.try_dequeue().message_id == "msg1"
+
+        # Produce 4 more (msg6, msg7 accepted; msg8, msg9 rejected)
+        for i in range(6, 10):
+            queue.enqueue(create_test_message(f"msg{i}"))
+
+        # Should have msg2, msg6, msg7 (msg3-5, msg8-9 were rejected)
+        assert queue.get_message_count() == 3
+        assert queue.get_dropped_count() == 5  # msg3, msg4, msg5, msg8, msg9
         assert queue.try_dequeue().message_id == "msg2"
-        assert queue.try_dequeue().message_id == "msg3"
-        assert queue.try_dequeue() is None
+        assert queue.try_dequeue().message_id == "msg6"
+        assert queue.try_dequeue().message_id == "msg7"
+
+    def test_lifo_drop_oldest(self):
+        """Test LIFO queue drops oldest messages when full."""
+        queue = LifoMessageQueueStrategy(max_size=3, overflow_strategy=OverflowStrategy.DROP_OLDEST)
+
+        # Produce 6 messages
+        for i in range(6):
+            queue.enqueue(create_test_message(f"msg{i}"))
+
+        # Consume 2 (msg5, msg4 - LIFO order)
+        assert queue.try_dequeue().message_id == "msg5"
+        assert queue.try_dequeue().message_id == "msg4"
+
+        # Produce 4 more (msg6 through msg9)
+        for i in range(6, 10):
+            queue.enqueue(create_test_message(f"msg{i}"))
+
+        # Should have msg9, msg8, msg7 in LIFO order (msg3, msg6 were dropped)
+        assert queue.get_message_count() == 3
+        assert queue.get_dropped_count() == 5  # msg0, msg1, msg2, msg3, msg6
+        assert queue.try_dequeue().message_id == "msg9"
+        assert queue.try_dequeue().message_id == "msg8"
+        assert queue.try_dequeue().message_id == "msg7"
+
+    def test_lifo_drop_newest(self):
+        """Test LIFO queue rejects newest messages when full."""
+        queue = LifoMessageQueueStrategy(max_size=3, overflow_strategy=OverflowStrategy.DROP_NEWEST)
+
+        # Produce 6 messages (msg3, msg4, msg5 rejected)
+        for i in range(6):
+            queue.enqueue(create_test_message(f"msg{i}"))
+
+        # Consume 2 (msg2, msg1 - LIFO order)
+        assert queue.try_dequeue().message_id == "msg2"
+        assert queue.try_dequeue().message_id == "msg1"
+
+        # Produce 4 more (msg6, msg7 accepted; msg8, msg9 rejected)
+        for i in range(6, 10):
+            queue.enqueue(create_test_message(f"msg{i}"))
+
+        # Should have msg7, msg6, msg0 in LIFO order (msg3-5, msg8-9 were rejected)
+        assert queue.get_message_count() == 3
+        assert queue.get_dropped_count() == 5  # msg3, msg4, msg5, msg8, msg9
+        assert queue.try_dequeue().message_id == "msg7"
+        assert queue.try_dequeue().message_id == "msg6"
+        assert queue.try_dequeue().message_id == "msg0"
 
 
-class TestFifoRaiseException:
-    """Tests for FIFO queue with RAISE_EXCEPTION strategy."""
+class TestRaiseExceptionStrategy:
+    """Tests for RAISE_EXCEPTION strategy."""
 
-    def test_raise_exception_when_full(self):
-        """Test that QueueFullError is raised when queue is full."""
+    def test_fifo_raise_exception_when_full(self):
+        """Test that FIFO QueueFullError is raised when queue is full and queue state is preserved."""
         queue = FifoMessageQueueStrategy(max_size=2, overflow_strategy=OverflowStrategy.RAISE_EXCEPTION)
 
         msg1 = create_test_message("msg1")
@@ -156,62 +177,13 @@ class TestFifoRaiseException:
         assert exc_info.value.message_id == "msg3"
         assert "Cannot accept message msg3" in str(exc_info.value)
 
-    def test_exception_preserves_queue(self):
-        """Test that queue state is preserved when exception is raised."""
-        queue = FifoMessageQueueStrategy(max_size=2, overflow_strategy=OverflowStrategy.RAISE_EXCEPTION)
-
-        msg1 = create_test_message("msg1")
-        msg2 = create_test_message("msg2")
-        queue.enqueue(msg1)
-        queue.enqueue(msg2)
-
-        # Try to add 3rd message
-        msg3 = create_test_message("msg3")
-        try:
-            queue.enqueue(msg3)
-        except QueueFullError:
-            pass
-
         # Queue should still have original 2 messages
         assert queue.get_message_count() == 2
         assert queue.try_dequeue().message_id == "msg1"
         assert queue.try_dequeue().message_id == "msg2"
 
-
-class TestLifoDropOldest:
-    """Tests for LIFO queue with DROP_OLDEST strategy."""
-
-    def test_drop_oldest_when_full(self):
-        """Test that oldest messages are dropped when LIFO queue is full."""
-        queue = LifoMessageQueueStrategy(max_size=3, overflow_strategy=OverflowStrategy.DROP_OLDEST)
-
-        msg1 = create_test_message("msg1")
-        msg2 = create_test_message("msg2")
-        msg3 = create_test_message("msg3")
-        queue.enqueue(msg1)
-        queue.enqueue(msg2)
-        queue.enqueue(msg3)
-
-        assert queue.get_message_count() == 3
-
-        # Add 4th message - should drop msg1 (oldest)
-        msg4 = create_test_message("msg4")
-        queue.enqueue(msg4)
-
-        assert queue.get_message_count() == 3
-        assert queue.get_dropped_count() == 1
-
-        # LIFO: should get msg4, msg3, msg2 (msg1 was dropped)
-        assert queue.try_dequeue().message_id == "msg4"
-        assert queue.try_dequeue().message_id == "msg3"
-        assert queue.try_dequeue().message_id == "msg2"
-
-
-class TestLifoRaiseException:
-    """Tests for LIFO queue with RAISE_EXCEPTION strategy."""
-
-    def test_raise_exception_when_full(self):
-        """Test that QueueFullError is raised when LIFO queue is full."""
+    def test_lifo_raise_exception_when_full(self):
+        """Test that LIFO QueueFullError is raised when queue is full."""
         queue = LifoMessageQueueStrategy(max_size=2, overflow_strategy=OverflowStrategy.RAISE_EXCEPTION)
 
         msg1 = create_test_message("msg1")

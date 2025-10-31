@@ -42,27 +42,15 @@ class TestApiBaseUrlValidation:
         assert config.api_base_url == "http://api.example.com"
         assert config.authority == "http://api.example.com/auth/"
 
-    def test_none_api_base_url_allowed_in_constructor(self):
-        """Test that None api_base_url is allowed in constructor."""
-        config = _StellaNowEnvironmentConfigImpl(mqtt_url="mqtt://localhost:1883", api_base_url=None)
-
-        assert config.api_base_url is None
-
     def test_authority_with_none_api_base_url_raises_runtime_error(self):
-        """Test that accessing authority with None api_base_url raises RuntimeError."""
+        """Test that accessing authority with None api_base_url raises RuntimeError with helpful message."""
         config = _StellaNowEnvironmentConfigImpl(mqtt_url="mqtt://localhost:1883", api_base_url=None)
-
-        with pytest.raises(RuntimeError, match="api_base_url is not configured"):
-            _ = config.authority
-
-    def test_runtime_error_has_helpful_message(self):
-        """Test that RuntimeError provides helpful guidance."""
-        config = _StellaNowEnvironmentConfigImpl(mqtt_url="mqtt://localhost:1883")
 
         with pytest.raises(RuntimeError) as exc_info:
             _ = config.authority
 
         error_message = str(exc_info.value)
+        assert "api_base_url is not configured" in error_message
         assert "OIDC authentication requires api_base_url" in error_message
         assert "EnvConfig.stellanow_prod()" in error_message
         assert "EnvConfig.stellanow_dev()" in error_message
@@ -133,19 +121,13 @@ class TestAuthorityProperty:
     """Tests for authority property."""
 
     def test_authority_appends_auth_path(self):
-        """Test that authority correctly appends /auth/ to api_base_url."""
-        config = _StellaNowEnvironmentConfigImpl(mqtt_url="mqtt://localhost:1883", api_base_url="https://api.example.com")
+        """Test that authority correctly appends /auth/ to api_base_url for various URL formats."""
+        test_cases = [
+            ("https://api.example.com", "https://api.example.com/auth/"),
+            ("https://api.example.com:8443", "https://api.example.com:8443/auth/"),
+            ("https://auth.api.example.com", "https://auth.api.example.com/auth/"),
+        ]
 
-        assert config.authority == "https://api.example.com/auth/"
-
-    def test_authority_with_port(self):
-        """Test that authority works correctly with ports in URL."""
-        config = _StellaNowEnvironmentConfigImpl(mqtt_url="mqtt://localhost:1883", api_base_url="https://api.example.com:8443")
-
-        assert config.authority == "https://api.example.com:8443/auth/"
-
-    def test_authority_with_subdomain(self):
-        """Test that authority works correctly with subdomains."""
-        config = _StellaNowEnvironmentConfigImpl(mqtt_url="mqtt://localhost:1883", api_base_url="https://auth.api.example.com")
-
-        assert config.authority == "https://auth.api.example.com/auth/"
+        for api_base_url, expected_authority in test_cases:
+            config = _StellaNowEnvironmentConfigImpl(mqtt_url="mqtt://localhost:1883", api_base_url=api_base_url)
+            assert config.authority == expected_authority

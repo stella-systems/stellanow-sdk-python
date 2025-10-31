@@ -22,7 +22,6 @@ IN THE SOFTWARE.
 
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
-from uuid import UUID
 
 import paho.mqtt.client as mqtt
 import pytest
@@ -33,6 +32,7 @@ from stellanow_sdk_python.messages.event import StellaNowEventWrapper
 from stellanow_sdk_python.messages.message import Entity, StellaNowMessageBase, StellaNowMessageWrapper
 from stellanow_sdk_python.sinks.mqtt.exceptions import MqttSinkDisconnectedError
 from stellanow_sdk_python.sinks.mqtt.stellanow_mqtt_sink import StellaNowMqttSink
+from tests.conftest import TEST_ORG_ID, TEST_PROJECT_ID
 
 
 class SampleMessage(StellaNowMessageBase):
@@ -102,9 +102,19 @@ def create_test_message(data: str = "test") -> StellaNowEventWrapper:
     wrapper = StellaNowMessageWrapper.create(msg)
     return StellaNowEventWrapper.create(
         message=wrapper,
-        organization_id=UUID("12345678-1234-5678-1234-567812345678"),
-        project_id=UUID("87654321-4321-8765-4321-876543218765"),
+        organization_id=TEST_ORG_ID,
+        project_id=TEST_PROJECT_ID,
     )
+
+
+def mock_connected_sink(sink: StellaNowMqttSink) -> None:
+    """Helper to mock a sink as connected."""
+    if sink.client:
+        sink.client.loop_stop()
+
+    sink.client = MagicMock(spec=mqtt.Client)
+    sink.client.loop_misc = MagicMock(return_value=mqtt.MQTT_ERR_SUCCESS)
+    sink._is_connected_event.set()
 
 
 class TestOrganizationIdValidation:
@@ -116,14 +126,7 @@ class TestOrganizationIdValidation:
         sink = StellaNowMqttSink(auth_strategy=mock_auth_strategy, env_config=env_config, project_info=empty_org_project_info)
 
         try:
-            # Stop the real client loop
-            if sink.client:
-                sink.client.loop_stop()
-
-            # Mock connected state
-            sink.client = MagicMock(spec=mqtt.Client)
-            sink.client.loop_misc = MagicMock(return_value=mqtt.MQTT_ERR_SUCCESS)
-            sink._is_connected_event.set()
+            mock_connected_sink(sink)
 
             message = create_test_message()
             with pytest.raises(ValueError, match="Organization ID is empty"):
@@ -145,14 +148,7 @@ class TestTopicValidation:
         sink = StellaNowMqttSink(auth_strategy=mock_auth_strategy, env_config=env_config, project_info=project_info)
 
         try:
-            # Stop the real client loop
-            if sink.client:
-                sink.client.loop_stop()
-
-            # Mock connected state
-            sink.client = MagicMock(spec=mqtt.Client)
-            sink.client.loop_misc = MagicMock(return_value=mqtt.MQTT_ERR_SUCCESS)
-            sink._is_connected_event.set()
+            mock_connected_sink(sink)
 
             message = create_test_message()
             with pytest.raises(ValueError, match="MQTT topic too long"):

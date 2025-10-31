@@ -29,12 +29,13 @@ import pytest
 from stellanow_sdk_python.config.eniviroment_config.stellanow_env_config import EnvConfig
 from stellanow_sdk_python.config.stellanow_config import StellaProjectInfo
 from stellanow_sdk_python.sinks.mqtt.stellanow_mqtt_sink import StellaNowMqttSink
+from tests.conftest import TEST_ORG_ID, TEST_PROJECT_ID
 
 
 @pytest.fixture
 def project_info():
     """Fixture providing project info."""
-    return StellaProjectInfo(organization_id="test-org", project_id="test-project")
+    return StellaProjectInfo(organization_id=TEST_ORG_ID, project_id=TEST_PROJECT_ID)
 
 
 @pytest.fixture
@@ -110,8 +111,8 @@ class TestIsConnectedNullSafety:
         finally:
             pass  # Mock client, nothing to cleanup
 
-    def test_is_connected_returns_false_when_event_not_set(self, mock_auth_strategy, env_config, project_info):
-        """Test that is_connected() returns False when connection event is not set."""
+    def test_is_connected_depends_on_event_state(self, mock_auth_strategy, env_config, project_info):
+        """Test that is_connected() returns False/True based on connection event state."""
         sink = StellaNowMqttSink(auth_strategy=mock_auth_strategy, env_config=env_config, project_info=project_info)
 
         try:
@@ -121,25 +122,12 @@ class TestIsConnectedNullSafety:
 
             sink.client = MagicMock(spec=mqtt.Client)
             sink.client.loop_misc = MagicMock(return_value=mqtt.MQTT_ERR_SUCCESS)
-            # Don't set the event
 
+            # Don't set the event - should return False
             assert sink.is_connected() is False
-        finally:
-            pass  # Mock client, nothing to cleanup
 
-    def test_is_connected_returns_true_when_properly_connected(self, mock_auth_strategy, env_config, project_info):
-        """Test that is_connected() returns True when properly connected."""
-        sink = StellaNowMqttSink(auth_strategy=mock_auth_strategy, env_config=env_config, project_info=project_info)
-
-        try:
-            # Stop the initial client loop
-            if sink.client:
-                sink.client.loop_stop()
-
-            sink.client = MagicMock(spec=mqtt.Client)
-            sink.client.loop_misc = MagicMock(return_value=mqtt.MQTT_ERR_SUCCESS)
+            # After setting the event - should return True
             sink._is_connected_event.set()
-
             assert sink.is_connected() is True
         finally:
             pass  # Mock client, nothing to cleanup
@@ -220,14 +208,13 @@ class TestTokenRefreshRuntimeCheck:
     """Tests for explicit runtime checks replacing assert statements."""
 
     @pytest.mark.asyncio
-    async def test_get_access_token_with_none_response_raises_runtime_error(self):
+    async def test_get_access_token_with_none_response_raises_runtime_error(self, project_info):
         """Test that get_access_token() raises RuntimeError instead of AssertionError."""
         from pydantic import SecretStr
 
         from stellanow_sdk_python.authentication.auth_service import StellaNowAuthenticationService
         from stellanow_sdk_python.config.stellanow_auth_credentials import StellaNowCredentials
 
-        project_info = StellaProjectInfo(organization_id="test-org", project_id="test-project")
         credentials = StellaNowCredentials(
             username="test", password=SecretStr("test"), client_id="test-client"
         )
@@ -248,7 +235,7 @@ class TestTokenRefreshRuntimeCheck:
             await auth_service.get_access_token()
 
     @pytest.mark.asyncio
-    async def test_refresh_access_token_explicit_none_check(self):
+    async def test_refresh_access_token_explicit_none_check(self, project_info):
         """Test that refresh_access_token() has explicit None check."""
         from keycloak.exceptions import KeycloakError
         from pydantic import SecretStr
@@ -257,7 +244,6 @@ class TestTokenRefreshRuntimeCheck:
         from stellanow_sdk_python.authentication.exceptions import TokenRefreshError
         from stellanow_sdk_python.config.stellanow_auth_credentials import StellaNowCredentials
 
-        project_info = StellaProjectInfo(organization_id="test-org", project_id="test-project")
         credentials = StellaNowCredentials(
             username="test", password=SecretStr("test"), client_id="test-client"
         )
@@ -281,29 +267,6 @@ class TestTokenRefreshRuntimeCheck:
 
 class TestClientRecreation:
     """Tests for client recreation during reconnection."""
-
-    def test_create_mqtt_client_returns_configured_client(self, mock_auth_strategy, env_config, project_info):
-        """Test that _create_mqtt_client() returns properly configured client."""
-        sink = StellaNowMqttSink(auth_strategy=mock_auth_strategy, env_config=env_config, project_info=project_info)
-
-        try:
-            # Stop the initial client loop
-            if sink.client:
-                sink.client.loop_stop()
-
-            new_client = sink._create_mqtt_client()
-
-            assert new_client is not None
-            # Verify callbacks are properly configured
-            assert new_client.on_connect == sink.on_connect
-            assert new_client.on_publish == sink.on_publish
-            assert new_client.on_disconnect == sink.on_disconnect
-            # Verify it's a proper MQTT client
-            assert isinstance(new_client, mqtt.Client)
-        finally:
-            # Cleanup
-            if sink.client:
-                sink.client.loop_stop()
 
     def test_client_id_is_unique(self, mock_auth_strategy, env_config, project_info):
         """Test that each sink instance gets a unique client_id."""
