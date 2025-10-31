@@ -140,7 +140,8 @@ class StellaNowMqttSink(IStellaNowSink):
             payload_size = len(payload_json.encode("utf-8"))
             if payload_size > 268_435_455:  # MQTT v5 max payload size
                 raise ValueError(
-                    f"Message payload too large: {payload_size} bytes (max 268,435,455). " f"Message ID: {message.message_id}"
+                    f"Message payload too large: {payload_size} bytes (max 268,435,455). "
+                    f"Message ID: {message.message_id}"
                 )
 
             if self.default_qos not in [0, 1, 2]:
