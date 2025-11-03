@@ -42,6 +42,13 @@ class TestApiBaseUrlValidation:
         assert config.api_base_url == "http://api.example.com"
         assert config.authority == "http://api.example.com/auth/"
 
+    def test_valid_http_url_with_slash(self):
+        """Test that valid HTTP URLs are accepted."""
+        config = _StellaNowEnvironmentConfigImpl(mqtt_url="mqtt://localhost:1883", api_base_url="http://api.example.com/")
+
+        assert config.api_base_url == "http://api.example.com"
+        assert config.authority == "http://api.example.com/auth/"
+
     def test_authority_with_none_api_base_url_raises_runtime_error(self):
         """Test that accessing authority with None api_base_url raises RuntimeError with helpful message."""
         config = _StellaNowEnvironmentConfigImpl(mqtt_url="mqtt://localhost:1883", api_base_url=None)
@@ -68,11 +75,6 @@ class TestApiBaseUrlInvalidFormats:
         """Test that FTP URLs raise ValueError."""
         with pytest.raises(ValueError, match="must start with http:// or https://"):
             _StellaNowEnvironmentConfigImpl(mqtt_url="mqtt://localhost:1883", api_base_url="ftp://api.example.com")
-
-    def test_url_ending_with_slash_raises_value_error(self):
-        """Test that URLs ending with slash raise ValueError."""
-        with pytest.raises(ValueError, match="must not end with /"):
-            _StellaNowEnvironmentConfigImpl(mqtt_url="mqtt://localhost:1883", api_base_url="https://api.example.com/")
 
     def test_empty_string_raises_value_error(self):
         """Test that empty string raises ValueError."""
