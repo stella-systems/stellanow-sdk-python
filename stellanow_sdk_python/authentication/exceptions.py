@@ -22,4 +22,32 @@ IN THE SOFTWARE.
 
 
 class TokenRefreshError(Exception):
-    """Raised when token refresh operation fails."""
+    """
+    Raised when token refresh operation fails.
+
+    This exception indicates that both:
+    1. Refresh token refresh failed (e.g., expired refresh token)
+    2. Fallback to full re-authentication also failed
+
+    This is a critical error that typically requires manual intervention,
+    such as updating credentials or checking Keycloak availability.
+    """
+
+
+class AuthenticationError(Exception):
+    """
+    Raised when authentication fails due to permanent errors.
+
+    This exception indicates a non-recoverable authentication error, such as:
+    - Invalid username/password (HTTP 401 with invalid_grant)
+    - Invalid client credentials
+    - User account locked/disabled
+
+    These errors should NOT be retried automatically as they require
+    manual intervention (updating credentials, unlocking account, etc.).
+    """
+
+    def __init__(self, message: str, error_code: int | None = None, is_permanent: bool = True):
+        super().__init__(message)
+        self.error_code = error_code
+        self.is_permanent = is_permanent

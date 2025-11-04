@@ -28,7 +28,7 @@ from keycloak import KeycloakOpenID
 from keycloak.exceptions import KeycloakError
 from loguru import logger
 
-from stellanow_sdk_python.authentication.exceptions import TokenRefreshError
+from stellanow_sdk_python.authentication.exceptions import AuthenticationError, TokenRefreshError
 from stellanow_sdk_python.config.eniviroment_config.stellanow_env_config import StellaNowEnvironmentConfig
 from stellanow_sdk_python.config.stellanow_auth_credentials import StellaNowCredentials
 from stellanow_sdk_python.config.stellanow_config import StellaProjectInfo
@@ -85,12 +85,16 @@ class StellaNowAuthenticationService:
         1. Calculates when the token will expire
         2. Sleeps until 30 seconds before expiration
         3. Refreshes the token using the refresh_token
-        4. Notifies registered callbacks of the new token
-        5. Retries with exponential backoff on failure (15 seconds)
+        4. Falls back to full re-authentication if refresh token is expired
+        5. Notifies registered callbacks of the new token
+        6. Retries with exponential backoff on transient failures (network errors)
 
         If no valid token exists, it will retry authentication every second.
         This ensures the SDK always has a valid token for MQTT authentication.
         """
+        retry_delay = 1  # Initial retry delay for transient errors
+        max_retry_delay = 60  # Cap at 60 seconds
+
         while True:
             if self.token_response and self.token_expires and not self._is_token_expired():
                 logger.debug("In _auto_refresh loop")
@@ -101,48 +105,87 @@ class StellaNowAuthenticationService:
             else:
                 logger.debug("No valid token to refresh, attempting initial authentication.")
                 await asyncio.sleep(1)
+
             try:
                 await self.refresh_access_token()
-            except (KeycloakError, ConnectionError, ValueError, asyncio.TimeoutError) as e:
-                logger.error(f"Failed to auto-refresh token: {e}")
+                # Reset retry delay on success
+                retry_delay = 1
+            except TokenRefreshError as e:
+                # TokenRefreshError means BOTH refresh and re-auth failed
+                # This is a critical error - likely credential issue or Keycloak down
+                logger.error(f"Critical: Token refresh and re-authentication both failed: {e}")
+                if self._is_token_expired():
+                    logger.warning("Token is expired, retrying immediately with re-authentication.")
+                    # Reset delay for immediate retry
+                    retry_delay = 1
+                    continue
+                # Exponential backoff for transient errors
+                await asyncio.sleep(retry_delay)
+                retry_delay = min(retry_delay * 2, max_retry_delay)
+            except (ConnectionError, asyncio.TimeoutError) as e:
+                # Network errors - use exponential backoff
+                logger.error(f"Network error during token refresh: {e}")
+                await asyncio.sleep(retry_delay)
+                retry_delay = min(retry_delay * 2, max_retry_delay)
+            except (KeycloakError, ValueError) as e:
+                logger.error(f"Unexpected error in auto-refresh: {e}")
                 if self._is_token_expired():
                     logger.warning("Token is expired, retrying immediately.")
+                    retry_delay = 1
                     continue
-                await asyncio.sleep(15)
+                await asyncio.sleep(retry_delay)
+                retry_delay = min(retry_delay * 2, max_retry_delay)
+
+    async def _authenticate_internal(self) -> str:
+        """Internal authentication method that doesn't acquire the lock."""
+        try:
+            token_response = await self.keycloak_openid.a_token(
+                username=self.credentials.username,
+                password=self.credentials.password.get_secret_value() if self.credentials.password else None,
+            )
+            if not isinstance(token_response, dict):
+                logger.error(f"Unexpected response type from Keycloak: {type(token_response)}, value: {token_response}")
+                raise ValueError(f"Keycloak returned non-dict response: {token_response}")
+            if "access_token" not in token_response:
+                logger.error(f"Token response missing 'access_token': {token_response}")
+                raise ValueError(f"Token response missing 'access_token': {token_response}")
+            self.token_response = token_response
+            self.token_expires = self._calculate_token_expires_time(self.token_response)
+            logger.info("Authentication successful!")
+            logger.debug(f"Token expires_in: {token_response.get('expires_in')}, expires at: {self.token_expires}")
+            await self.start_refresh_task()
+            return self.token_response["access_token"]
+        except KeycloakError as e:
+            error_status = getattr(e, "response_code", "Unknown")
+            error_message = (
+                getattr(e, "error_message", str(e)).splitlines()[0] if hasattr(e, "error_message") else str(e)[:100]
+            )
+            logger.error(f"Keycloak authentication failed: {error_status} - {error_message}")
+            logger.debug(f"Full Keycloak error details: {e}")
+
+            # Check if this is a permanent error (invalid credentials, etc.)
+            if self._is_permanent_auth_error(e):
+                logger.critical(
+                    f"Permanent authentication error detected: {error_message}. "
+                    "This error requires manual intervention (check credentials, account status, etc.). "
+                    "SDK will not retry automatically."
+                )
+                raise AuthenticationError(
+                    f"Permanent authentication failure: {error_status} - {error_message}",
+                    error_code=error_status,
+                    is_permanent=True,
+                ) from e
+
+            # Transient errors (network, server) - raise ValueError for retry
+            raise ValueError(f"Failed to authenticate with Keycloak: {error_status} - {error_message}")
+        except (ValueError, ConnectionError, asyncio.TimeoutError) as e:
+            logger.error(f"Unexpected authentication error: {e}")
+            raise ValueError(f"Authentication failed: {e}")
 
     async def authenticate(self) -> str:
         """Authenticate and get the access token asynchronously."""
         async with self.lock:
-            try:
-                token_response = await self.keycloak_openid.a_token(
-                    username=self.credentials.username,
-                    password=self.credentials.password.get_secret_value() if self.credentials.password else None,
-                )
-                if not isinstance(token_response, dict):
-                    logger.error(
-                        f"Unexpected response type from Keycloak: {type(token_response)}, value: {token_response}"
-                    )
-                    raise ValueError(f"Keycloak returned non-dict response: {token_response}")
-                if "access_token" not in token_response:
-                    logger.error(f"Token response missing 'access_token': {token_response}")
-                    raise ValueError(f"Token response missing 'access_token': {token_response}")
-                self.token_response = token_response
-                self.token_expires = self._calculate_token_expires_time(self.token_response)
-                logger.info("Authentication successful!")
-                logger.debug(f"Token expires_in: {token_response.get('expires_in')}, expires at: {self.token_expires}")
-                await self.start_refresh_task()
-                return self.token_response["access_token"]
-            except KeycloakError as e:
-                error_status = getattr(e, "response_code", "Unknown")
-                error_message = (
-                    getattr(e, "error_message", str(e)).splitlines()[0] if hasattr(e, "error_message") else str(e)[:100]
-                )
-                logger.error(f"Keycloak authentication failed: {error_status} - {error_message}")
-                logger.debug(f"Full Keycloak error details: {e}")
-                raise ValueError(f"Failed to authenticate with Keycloak: {error_status} - {error_message}")
-            except (ValueError, ConnectionError, asyncio.TimeoutError) as e:
-                logger.error(f"Unexpected authentication error: {e}")
-                raise ValueError(f"Authentication failed: {e}")
+            return await self._authenticate_internal()
 
     @staticmethod
     def _calculate_token_expires_time(token_response: Dict[str, Any]) -> datetime:
@@ -153,6 +196,96 @@ class StellaNowAuthenticationService:
         if self.token_expires is None:
             return True
         return datetime.now() >= self.token_expires
+
+    @staticmethod
+    def _is_permanent_auth_error(error: KeycloakError) -> bool:
+        """
+        Check if a KeycloakError indicates a permanent authentication error.
+
+        Permanent errors include invalid credentials, locked accounts, etc.
+        These should NOT be retried automatically.
+
+        Args:
+            error: The KeycloakError exception to check
+
+        Returns:
+            True if the error is permanent (requires manual intervention), False otherwise
+        """
+        error_code = getattr(error, "response_code", None)
+        error_message = str(error).lower()
+
+        # Check if error message looks like HTML (proxy/firewall error)
+        # HTML responses indicate network/infrastructure issues, not auth problems
+        if "<!doctype html>" in error_message or "<html" in error_message:
+            return False
+
+        # HTTP 401 with specific error types indicates permanent credential issues
+        if error_code == 401:
+            permanent_patterns = [
+                "invalid_grant",  # Wrong username/password
+                "invalid user credentials",
+                "invalid username or password",
+                "account is disabled",
+                "account is locked",
+                "unauthorized_client",  # Invalid client_id
+                "invalid_client",
+            ]
+            if any(pattern in error_message for pattern in permanent_patterns):
+                return True
+
+        # HTTP 403 with JSON error body indicates authorization issues
+        # But HTML responses are usually proxy/firewall blocks (transient)
+        if error_code == 403:
+            # Check if it's a proper JSON error from Keycloak
+            if any(
+                pattern in error_message
+                for pattern in [
+                    "access_denied",
+                    "insufficient_scope",
+                    "forbidden",
+                    '"error"',  # JSON error response
+                ]
+            ):
+                return True
+            # HTML or other non-JSON response = network issue
+            return False
+
+        return False
+
+    @staticmethod
+    def _is_token_expiration_error(error: KeycloakError) -> bool:
+        """
+        Check if a KeycloakError indicates an expired or invalid refresh token.
+
+        Args:
+            error: The KeycloakError exception to check
+
+        Returns:
+            True if the error indicates token expiration/invalidity, False otherwise
+        """
+        error_code = getattr(error, "response_code", None)
+        error_message = str(error).lower()
+
+        # Exclude permanent auth errors from token expiration detection
+        if error_code == 401 and any(
+            pattern in error_message
+            for pattern in ["invalid_grant", "invalid user credentials", "invalid username or password"]
+        ):
+            return False
+
+        # HTTP 400 (Bad Request) or 401 (Unauthorized) typically indicate expired/invalid tokens
+        if error_code in [400, 401]:
+            return True
+
+        # Check error message for common patterns
+        expiration_patterns = [
+            "token expired",
+            "token is expired",
+            "invalid refresh token",
+            "refresh token expired",
+            "token not valid",
+        ]
+        return any(pattern in error_message for pattern in expiration_patterns)
 
     async def get_access_token(self) -> str:
         if self.token_response is None or self._is_token_expired():
@@ -166,7 +299,8 @@ class StellaNowAuthenticationService:
         async with self.lock:
             if not self.token_response or "refresh_token" not in self.token_response:
                 logger.warning("No valid refresh token available, falling back to authenticate.")
-                return await self.authenticate()
+                # Call internal method to avoid deadlock (we already hold the lock)
+                return await self._authenticate_internal()
             try:
                 refresh_token = self.token_response["refresh_token"]
                 logger.info("Refreshing access token...")
@@ -175,7 +309,6 @@ class StellaNowAuthenticationService:
                 access_token: str = self.token_response["access_token"]
                 logger.info("Access token refreshed successfully.")
                 logger.debug(f"Token refreshed, expires at: {self.token_expires}")
-                # Notify callbacks of new token
                 for callback in self._token_update_callbacks:
                     try:
                         await callback(access_token)
@@ -186,4 +319,20 @@ class StellaNowAuthenticationService:
                 return access_token
             except KeycloakError as e:
                 logger.error(f"Failed to refresh access token: {e}")
+                if self._is_token_expiration_error(e):
+                    error_code = getattr(e, "response_code", "Unknown")
+                    logger.warning(
+                        f"Refresh token appears to be expired or invalid (HTTP {error_code}). "
+                        "Falling back to full re-authentication with username/password."
+                    )
+                    try:
+                        self.token_response = None
+                        self.token_expires = None
+                        return await self._authenticate_internal()
+                    except Exception as auth_error:
+                        logger.error(f"Re-authentication also failed: {auth_error}")
+                        raise TokenRefreshError(
+                            f"Both token refresh and re-authentication failed. "
+                            f"Refresh error: {e}, Auth error: {auth_error}"
+                        ) from e
                 raise TokenRefreshError(f"Failed to refresh access token: {e}") from e
