@@ -63,6 +63,8 @@ This will:
 * Authenticate with OIDC using the provided username and password, using a specific OIDC Client designed for data ingestion.
 * Resulting token will be used in MQTT broker authentication with specific claim.
 * Connect to the MQTT sink securely.
+* Automatically refresh the access token before expiration using the refresh token.
+* **Automatically recover** from expired refresh tokens by re-authenticating with username/password when needed.
 
 ### Using Username/Password Authentication
 For scenarios requiring simple username/password authentication, use `configure_dev_basic_mqtt_lifo_sdk`:

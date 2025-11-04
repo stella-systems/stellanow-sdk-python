@@ -27,6 +27,7 @@ import paho.mqtt.client as mqtt
 from loguru import logger
 from nanoid import generate
 
+from stellanow_sdk_python.authentication.exceptions import AuthenticationError
 from stellanow_sdk_python.config.eniviroment_config.stellanow_env_config import StellaNowEnvironmentConfig
 from stellanow_sdk_python.config.stellanow_config import StellaProjectInfo
 from stellanow_sdk_python.messages.event import StellaNowEventWrapper
@@ -98,10 +99,25 @@ class StellaNowMqttSink(IStellaNowSink):
             if not self._monitor_task:
                 self._monitor_task = asyncio.create_task(self._connection_monitor())
 
-        # Wait outside the lock to avoid blocking other operations
-        # Note: timeout=None is intentional - blocks until connected to prevent queueing messages without connection
-        await self._is_connected_event.wait()
-        logger.info("Initial connection established")
+        # Wait for either connection or monitor task failure
+        # If monitor task fails (e.g., permanent auth error), propagate the exception
+        connection_wait = asyncio.create_task(self._is_connected_event.wait())
+        done, pending = await asyncio.wait([connection_wait, self._monitor_task], return_when=asyncio.FIRST_COMPLETED)
+
+        # If monitor task completed, check if it failed
+        if self._monitor_task in done:
+            # Monitor task finished - check for exception
+            try:
+                self._monitor_task.result()
+            except Exception as e:
+                logger.error(f"Connection monitor failed with permanent error: {e}")
+                connection_wait.cancel()  # Cancel the wait task
+                raise
+
+        # If connection succeeded
+        if connection_wait in done:
+            logger.info("Initial connection established")
+            return
 
     async def disconnect(self) -> None:
         logger.info("Disconnecting from MQTT broker...")
@@ -294,6 +310,21 @@ class StellaNowMqttSink(IStellaNowSink):
                         self.client.loop_start()
                         await asyncio.wait_for(self._is_connected_event.wait(), timeout=5.0)
                         logger.info("Successfully connected to MQTT broker")
+                        attempt = 1  # Reset attempt counter on success
+                    except AuthenticationError as e:
+                        # Permanent authentication error - stop retrying
+                        logger.critical(
+                            f"Permanent authentication error: {e}. "
+                            "SDK cannot connect due to invalid credentials or account issues. "
+                            "Connection monitor is stopping. Please fix credentials and restart SDK."
+                        )
+                        try:
+                            self.client.loop_stop()
+                        except (RuntimeError, OSError) as stop_e:
+                            logger.warning(f"Error stopping loop: {stop_e}")
+                        self.client = None
+                        self._shutdown = True  # Stop connection monitor
+                        raise  # Re-raise to propagate error to SDK
                     except (ConnectionError, RuntimeError, OSError, asyncio.TimeoutError, ValueError) as e:
                         logger.error(f"Connection attempt {attempt} failed: {e}", exc_info=True)
                         try:
