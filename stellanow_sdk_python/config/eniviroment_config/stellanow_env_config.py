@@ -37,10 +37,25 @@ class StellaNowEnvironmentConfig(Protocol):
 class _StellaNowEnvironmentConfigImpl:
     def __init__(self, mqtt_url: str, api_base_url: Optional[str] = None):
         self.mqtt_url_config = parse_mqtt_url(mqtt_url)
+
+        # Validate api_base_url if provided
+        if api_base_url is not None:
+            if not api_base_url.startswith(("http://", "https://")):
+                raise ValueError(f"Invalid api_base_url: must start with http:// or https://, got: {api_base_url}")
+            # Auto-truncate trailing slash if present
+            if api_base_url.endswith("/"):
+                api_base_url = api_base_url.rstrip("/")
+
         self.api_base_url = api_base_url
 
     @property
     def authority(self) -> str:
+        if self.api_base_url is None:
+            raise RuntimeError(
+                "api_base_url is not configured. OIDC authentication requires api_base_url. "
+                "Use EnvConfig.stellanow_prod() or EnvConfig.stellanow_dev() for predefined configs, "
+                "or provide api_base_url when creating custom environment."
+            )
         return f"{self.api_base_url}/auth/"
 
 

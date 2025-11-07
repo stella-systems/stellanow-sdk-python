@@ -28,6 +28,7 @@ from keycloak import KeycloakOpenID
 from keycloak.exceptions import KeycloakError
 from loguru import logger
 
+from stellanow_sdk_python.authentication.exceptions import TokenRefreshError
 from stellanow_sdk_python.config.eniviroment_config.stellanow_env_config import StellaNowEnvironmentConfig
 from stellanow_sdk_python.config.stellanow_auth_credentials import StellaNowCredentials
 from stellanow_sdk_python.config.stellanow_config import StellaProjectInfo
@@ -77,7 +78,19 @@ class StellaNowAuthenticationService:
             self._refresh_task = None
 
     async def _auto_refresh(self) -> None:
-        """Periodically refresh the token before it expires."""
+        """
+        Background task that automatically refreshes the access token before expiration.
+
+        This method runs continuously in the background and:
+        1. Calculates when the token will expire
+        2. Sleeps until 30 seconds before expiration
+        3. Refreshes the token using the refresh_token
+        4. Notifies registered callbacks of the new token
+        5. Retries with exponential backoff on failure (15 seconds)
+
+        If no valid token exists, it will retry authentication every second.
+        This ensures the SDK always has a valid token for MQTT authentication.
+        """
         while True:
             if self.token_response and self.token_expires and not self._is_token_expired():
                 logger.debug("In _auto_refresh loop")
@@ -90,7 +103,7 @@ class StellaNowAuthenticationService:
                 await asyncio.sleep(1)
             try:
                 await self.refresh_access_token()
-            except Exception as e:
+            except (KeycloakError, ConnectionError, ValueError, asyncio.TimeoutError) as e:
                 logger.error(f"Failed to auto-refresh token: {e}")
                 if self._is_token_expired():
                     logger.warning("Token is expired, retrying immediately.")
@@ -102,7 +115,8 @@ class StellaNowAuthenticationService:
         async with self.lock:
             try:
                 token_response = await self.keycloak_openid.a_token(
-                    username=self.credentials.username, password=self.credentials.password  # type: ignore[arg-type]
+                    username=self.credentials.username,
+                    password=self.credentials.password.get_secret_value() if self.credentials.password else None,
                 )
                 if not isinstance(token_response, dict):
                     logger.error(
@@ -125,10 +139,10 @@ class StellaNowAuthenticationService:
                 )
                 logger.error(f"Keycloak authentication failed: {error_status} - {error_message}")
                 logger.debug(f"Full Keycloak error details: {e}")
-                raise Exception(f"Failed to authenticate with Keycloak: {error_status} - {error_message}")
-            except Exception as e:
+                raise ValueError(f"Failed to authenticate with Keycloak: {error_status} - {error_message}")
+            except (ValueError, ConnectionError, asyncio.TimeoutError) as e:
                 logger.error(f"Unexpected authentication error: {e}")
-                raise Exception(f"Authentication failed: {e}")
+                raise ValueError(f"Authentication failed: {e}")
 
     @staticmethod
     def _calculate_token_expires_time(token_response: Dict[str, Any]) -> datetime:
@@ -144,7 +158,8 @@ class StellaNowAuthenticationService:
         if self.token_response is None or self._is_token_expired():
             logger.info("Token expired or missing. Re-authenticating...")
             return await self.authenticate()
-        assert self.token_response is not None
+        if self.token_response is None:
+            raise RuntimeError("Token response is None after authentication check")
         return self.token_response["access_token"]
 
     async def refresh_access_token(self) -> str:
@@ -159,15 +174,16 @@ class StellaNowAuthenticationService:
                 self.token_expires = self._calculate_token_expires_time(self.token_response)
                 access_token: str = self.token_response["access_token"]
                 logger.info("Access token refreshed successfully.")
-                logger.debug(f"Refreshed token: {access_token[:20]}..., expires: {self.token_expires}")
+                logger.debug(f"Token refreshed, expires at: {self.token_expires}")
                 # Notify callbacks of new token
                 for callback in self._token_update_callbacks:
                     try:
                         await callback(access_token)
-                    except Exception as e:
+                    except (RuntimeError, ValueError, ConnectionError) as e:
                         logger.error(f"Token update callback failed: {e}")
-                assert self.token_response is not None
+                if self.token_response is None:
+                    raise RuntimeError("Token response became None after refresh")
                 return access_token
             except KeycloakError as e:
                 logger.error(f"Failed to refresh access token: {e}")
-                raise Exception("Failed to refresh access token")
+                raise TokenRefreshError(f"Failed to refresh access token: {e}") from e

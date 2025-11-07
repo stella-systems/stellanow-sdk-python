@@ -20,6 +20,9 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 """
 
+import asyncio
+from typing import Optional
+
 import paho.mqtt.client as mqtt
 from loguru import logger
 
@@ -45,29 +48,41 @@ class OidcMqttAuthStrategy(IMqttAuthStrategy):
             env_config=self.env_config,
         )
         self.client = None
+        self._client_lock: Optional[asyncio.Lock] = None  # Will be set by sink
         self.auth_service.register_token_update_callback(self._update_token)
         logger.debug("Initialized OidcMqttAuthStrategy and registered callback")
 
+    def set_client_lock(self, lock: asyncio.Lock) -> None:
+        """Set the client lock for thread-safe access to the MQTT client."""
+        self._client_lock = lock
+        logger.debug("Client lock set for OidcMqttAuthStrategy")
+
     async def _update_token(self, new_token: str) -> None:
         """Update MQTT client credentials with new token and reconnect."""
-        logger.info(f"Received token update callback with new token: {new_token[:20]}...")
-        if self.client:
-            logger.debug("Updating MQTT client credentials and forcing reconnect")
-            self.client.username_pw_set(username=new_token, password=None)
-            try:
-                self.client.disconnect()
-                logger.debug("Disconnected MQTT client for token update")
-                self.client.reconnect()
-                logger.info("Reconnected MQTT client after token update")
-            except Exception as e:
-                logger.error(f"Failed to reconnect after token update: {e}")
+        logger.info("Received token update callback, updating MQTT client credentials")
+
+        # Acquire lock to safely update client
+        if self._client_lock is not None:
+            async with self._client_lock:
+                if self.client:
+                    logger.debug("Updating MQTT client credentials and forcing reconnect")
+                    self.client.username_pw_set(username=new_token, password=None)
+                    try:
+                        self.client.disconnect()
+                        logger.debug("Disconnected MQTT client for token update")
+                        self.client.reconnect()
+                        logger.info("Reconnected MQTT client after token update")
+                    except (ConnectionError, RuntimeError, OSError) as e:
+                        logger.error(f"Failed to reconnect after token update: {e}")
+                else:
+                    logger.warning("No MQTT client available to update token")
         else:
-            logger.warning("No MQTT client available to update token")
+            logger.warning("Client lock not set, skipping token update (race condition risk)")
 
     async def authenticate(self, client: mqtt.Client) -> None:
         """Authenticate the MQTT client using OIDC."""
         self.client = client
         access_token = await self.auth_service.get_access_token()
         logger.info("Authenticating MQTT client using OIDC.")
-        logger.debug(f"Using token: {access_token[:20]}...")
+        logger.debug("OIDC token retrieved successfully, configuring MQTT client credentials")
         client.username_pw_set(username=access_token, password=None)

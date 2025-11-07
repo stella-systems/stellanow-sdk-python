@@ -5,10 +5,13 @@ Welcome to the StellaNow Python SDK. This SDK is designed to provide an easy-to-
 
 ## Key Features
 - Automated connection handling (connection, disconnection, and reconnection)
-- Message queuing to handle any network instability
+- Message queuing with configurable overflow strategies to handle network instability
+- Large default queue size (100,000 messages, ~300 MB for metadata-only messages)
+- Configurable overflow handling: drop oldest, drop newest, or raise exceptions for critical data
 - Authentication management (login and automatic token refreshing)
 - Easy interface to send different types of messages
 - Extensibility options for more specific needs
+- Production-ready with robust error handling and validation
 
 ## Getting Started
 Before you start integrating the SDK, ensure you have a Stella Now account.
@@ -96,6 +99,74 @@ Ensure you have set the appropriate environment variables.
 ```python
 2025-03-14 13:18:36.802 | INFO     | stellanow_sdk_python.sinks.mqtt.stellanow_mqtt_sink:__init__:67 - SDK Client ID is "StellaNowSDKPython_oLMA971RWD"
 ```
+
+### Configuring Queue Overflow Behavior
+
+The SDK provides configurable queue overflow strategies to handle different data criticality requirements. By default, the SDK uses a 100,000-message queue with DROP_OLDEST strategy (backward compatible).
+
+#### For Critical Data (e.g., ANPR, Financial Transactions)
+
+When you cannot afford to lose any messages, use the `RAISE_EXCEPTION` strategy:
+
+```python
+from stellanow_sdk_python.configure_sdk import configure_sdk
+from stellanow_sdk_python.config.eniviroment_config.stellanow_env_config import EnvConfig
+from stellanow_sdk_python.config.enums.auth_strategy import AuthStrategyTypes
+from stellanow_sdk_python.message_queue.message_queue_strategy.overflow_strategy import (
+    OverflowStrategy,
+    QueueFullError
+)
+
+# Configure for critical ANPR data
+sdk = configure_sdk(
+    auth_strategy_type=AuthStrategyTypes.OIDC.value,
+    env_config=EnvConfig.stellanow_prod(),
+    queue_max_size=200_000,  # Large queue for extended outages
+    queue_overflow_strategy=OverflowStrategy.RAISE_EXCEPTION  # Never lose data silently
+)
+
+await sdk.start()
+
+# In your processing loop
+try:
+    sdk.send_message(critical_event)
+except QueueFullError as e:
+    logger.critical(
+        f"Queue full! Size: {e.queue_size}, "
+        f"Already dropped: {e.dropped_count}, "
+        f"Failed message: {e.message_id}"
+    )
+    # Implement your backup strategy:
+    await write_to_backup_file(critical_event)
+    # Or wait and retry
+    await asyncio.sleep(5)
+```
+
+#### Available Overflow Strategies
+
+- **DROP_OLDEST** (default): Drops oldest messages when queue is full. Good for real-time data where newest matters most.
+- **DROP_NEWEST**: Rejects new messages when queue is full. Good for preserving historical data.
+- **RAISE_EXCEPTION**: Raises `QueueFullError` when queue is full. Best for critical data where application needs to decide what to do.
+
+#### Adjusting Queue Size
+
+```python
+# For high-throughput systems (e.g., ANPR with 100+ cameras)
+sdk = configure_sdk(
+    auth_strategy_type=AuthStrategyTypes.OIDC.value,
+    env_config=EnvConfig.stellanow_prod(),
+    queue_max_size=500_000  # ~1.5 GB for metadata-only messages with S3 links
+)
+
+# For low-memory environments
+sdk = configure_sdk(
+    auth_strategy_type=AuthStrategyTypes.OIDC.value,
+    env_config=EnvConfig.stellanow_prod(),
+    queue_max_size=10_000  # ~30 MB
+)
+```
+
+> **Memory Usage:** For messages containing only metadata and S3 links (no embedded images), expect ~3 KB per message. A 100,000-message queue uses approximately 300 MB of memory.
 
 ## Sample Application
 Here is a simple application that uses StellaNowSDK to send user details messages to the Stella Now platform.
@@ -244,9 +315,42 @@ Please note that it is discouraged to write these classes yourself. Using the CL
 StellaNowSDK provides extensive flexibility for developers to adapt the SDK to their specific needs. You can extend key components, including message queuing strategies, sinks (where messages are sent), connection strategies, and authentication mechanisms.
 
 ### Customizing the Message Queue Strategy
-By default, `StellaNowPythonSDK` uses an in-memory queue to temporarily hold messages before sending them to a sink. These non-persistent queues will lose all messages if the application terminates unexpectedly.
+By default, `StellaNowPythonSDK` uses an in-memory queue to temporarily hold messages before sending them to a sink. The SDK provides built-in FIFO and LIFO queue strategies with configurable overflow behavior:
 
-If your application requires a persistent queue that survives restarts or crashes, you can implement a custom queue strategy by extending `IMessageQueueStrategy` and integrating it with a database, file system, or distributed queu
+- **Default Size:** 100,000 messages (~300 MB for metadata-only messages)
+- **Overflow Strategies:** DROP_OLDEST (default), DROP_NEWEST, or RAISE_EXCEPTION
+- **Configurable via:** `configure_sdk()` parameters: `queue_max_size` and `queue_overflow_strategy`
+
+These non-persistent queues will lose all messages if the application terminates unexpectedly.
+
+#### Implementing a Persistent Queue
+If your application requires a persistent queue that survives restarts or crashes, you can implement a custom queue strategy by extending `IMessageQueueStrategy` and integrating it with a database, file system, or distributed queue system.
+
+Your custom strategy should implement:
+- `enqueue(message)` - Add message to queue
+- `try_dequeue()` - Remove and return message from queue
+- `is_empty()` - Check if queue is empty
+- `get_message_count()` - Return current queue size
+
+Example integration:
+```python
+from stellanow_sdk_python.message_queue.message_queue_strategy.i_message_queue_strategy import IMessageQueueStrategy
+
+class DatabaseQueueStrategy(IMessageQueueStrategy):
+    def __init__(self, db_connection):
+        self.db = db_connection
+
+    def enqueue(self, message):
+        self.db.insert("queue", message.model_dump_json())
+
+    def try_dequeue(self):
+        row = self.db.fetch_oldest("queue")
+        if row:
+            self.db.delete("queue", row.id)
+            return StellaNowEventWrapper.model_validate_json(row.data)
+        return None
+    # ... implement other methods
+```
 
 >⚠️ **Performance Considerations:** Persistent queues introduce additional latency and require careful design to balance reliability and performance.
 

@@ -73,6 +73,8 @@ class StellaNowMessageWrapper(StellaNowBaseModel):
 
     @property
     def primary_entity(self) -> Entity:
+        if not self.metadata.entities:
+            raise ValueError("No entities available in message. Message must contain at least one entity.")
         return self.metadata.entities[0]
 
     @classmethod
