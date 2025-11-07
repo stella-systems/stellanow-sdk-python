@@ -42,7 +42,9 @@ class FifoMessageQueueStrategy(BaseDequeStrategy):
                           - DROP_NEWEST: Reject new message when full
     """
 
-    def __init__(self, max_size: int = 0, overflow_strategy: OverflowStrategy = OverflowStrategy.RAISE_EXCEPTION) -> None:
+    def __init__(
+        self, max_size: int = 0, overflow_strategy: OverflowStrategy = OverflowStrategy.RAISE_EXCEPTION
+    ) -> None:
         super().__init__(max_size, overflow_strategy)
 
     def _drop_oldest(self) -> StellaNowEventWrapper:
