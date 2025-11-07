@@ -36,13 +36,13 @@ class LifoMessageQueueStrategy(BaseDequeStrategy):
     Args:
         max_size: Maximum number of messages in queue. Default is 0 (unlimited).
                   WARNING: Unlimited queue can cause memory overflow if messages are produced faster than consumed.
-        overflow_strategy: Strategy for handling queue overflow. Default is DROP_OLDEST (backward compatible).
-                          - DROP_OLDEST: Drop oldest message when full (default)
+        overflow_strategy: Strategy for handling queue overflow. Default is RAISE_EXCEPTION.
+                          - RAISE_EXCEPTION: Raise QueueFullError for application to handle (default)
+                          - DROP_OLDEST: Drop oldest message when full
                           - DROP_NEWEST: Reject new message when full
-                          - RAISE_EXCEPTION: Raise QueueFullError for application to handle
     """
 
-    def __init__(self, max_size: int = 0, overflow_strategy: OverflowStrategy = OverflowStrategy.DROP_OLDEST) -> None:
+    def __init__(self, max_size: int = 0, overflow_strategy: OverflowStrategy = OverflowStrategy.RAISE_EXCEPTION) -> None:
         super().__init__(max_size, overflow_strategy)
 
     def _drop_oldest(self) -> StellaNowEventWrapper:

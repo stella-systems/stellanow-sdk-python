@@ -233,16 +233,20 @@ class TestDefaultBehavior:
         assert queue.get_message_count() == 0
 
     def test_default_overflow_strategy(self):
-        """Test that default overflow strategy is DROP_OLDEST."""
+        """Test that default overflow strategy is RAISE_EXCEPTION."""
         queue = FifoMessageQueueStrategy(max_size=2)
 
         msg1 = create_test_message("msg1")
         msg2 = create_test_message("msg2")
-        msg3 = create_test_message("msg3")
         queue.enqueue(msg1)
         queue.enqueue(msg2)
-        queue.enqueue(msg3)
 
-        # Should have dropped msg1, kept msg2 and msg3
+        # 3rd message should raise exception with default strategy
+        msg3 = create_test_message("msg3")
+        with pytest.raises(QueueFullError):
+            queue.enqueue(msg3)
+
+        # Queue should still have original 2 messages
+        assert queue.get_message_count() == 2
+        assert queue.try_dequeue().message_id == "msg1"
         assert queue.try_dequeue().message_id == "msg2"
-        assert queue.try_dequeue().message_id == "msg3"

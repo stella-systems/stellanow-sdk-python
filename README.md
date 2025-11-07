@@ -106,7 +106,7 @@ Ensure you have set the appropriate environment variables.
 
 ⚠️ **IMPORTANT: The SDK now uses an unlimited queue by default (max_size=0). This means the queue will NEVER drop messages, but can cause memory overflow if messages are produced faster than they are consumed. Monitor your application's memory usage carefully.**
 
-The SDK provides configurable queue overflow strategies to handle different data criticality requirements. By default, the SDK uses an unlimited queue with DROP_OLDEST strategy (which only applies if you set a max_size limit).
+The SDK provides configurable queue overflow strategies to handle different data criticality requirements. By default, the SDK uses an unlimited queue with RAISE_EXCEPTION strategy (which only applies if you set a max_size limit).
 
 #### For Critical Data (e.g., ANPR, Financial Transactions)
 
@@ -148,9 +148,9 @@ except QueueFullError as e:
 
 #### Available Overflow Strategies
 
-- **DROP_OLDEST** (default): Drops oldest messages when queue is full. Good for real-time data where newest matters most.
+- **RAISE_EXCEPTION** (default): Raises `QueueFullError` when queue is full. Best for critical data where application needs to decide what to do.
+- **DROP_OLDEST**: Drops oldest messages when queue is full. Good for real-time data where newest matters most.
 - **DROP_NEWEST**: Rejects new messages when queue is full. Good for preserving historical data.
-- **RAISE_EXCEPTION**: Raises `QueueFullError` when queue is full. Best for critical data where application needs to decide what to do.
 
 #### Adjusting Queue Size
 
@@ -165,12 +165,12 @@ sdk = configure_sdk(
     queue_overflow_strategy=OverflowStrategy.RAISE_EXCEPTION  # Alert on queue full
 )
 
-# For typical production environments
+# For typical production environments (explicit size + strategy)
 sdk = configure_sdk(
     auth_strategy_type=AuthStrategyTypes.OIDC.value,
     env_config=EnvConfig.stellanow_prod(),
     queue_max_size=100_000,  # ~300 MB for metadata-only messages
-    queue_overflow_strategy=OverflowStrategy.DROP_OLDEST  # Drop old messages when full
+    queue_overflow_strategy=OverflowStrategy.DROP_OLDEST  # Or use default RAISE_EXCEPTION
 )
 
 # For low-memory environments
@@ -340,7 +340,8 @@ StellaNowSDK provides extensive flexibility for developers to adapt the SDK to t
 By default, `StellaNowPythonSDK` uses an in-memory queue to temporarily hold messages before sending them to a sink. The SDK provides built-in FIFO and LIFO queue strategies with configurable overflow behavior:
 
 - **Default Size:** 0 (unlimited) - ⚠️ **WARNING: Can cause memory overflow in production!**
-- **Overflow Strategies:** DROP_OLDEST (default), DROP_NEWEST, or RAISE_EXCEPTION
+- **Default Overflow Strategy:** RAISE_EXCEPTION (raises error when queue reaches limit)
+- **Alternative Strategies:** DROP_OLDEST, DROP_NEWEST
 - **Configurable via:** `configure_sdk()` parameters: `queue_max_size` and `queue_overflow_strategy`
 - **Recommendation:** Always set an explicit `queue_max_size` in production environments
 
