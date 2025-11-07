@@ -6,7 +6,7 @@ Welcome to the StellaNow Python SDK. This SDK is designed to provide an easy-to-
 ## Key Features
 - Automated connection handling (connection, disconnection, and reconnection)
 - Message queuing with configurable overflow strategies to handle network instability
-- Large default queue size (100,000 messages, ~300 MB for metadata-only messages)
+- Unlimited queue size by default (WARNING: can cause memory overflow - see Queue Configuration section)
 - Configurable overflow handling: drop oldest, drop newest, or raise exceptions for critical data
 - Authentication management (login and automatic token refreshing)
 - Easy interface to send different types of messages
@@ -104,7 +104,9 @@ Ensure you have set the appropriate environment variables.
 
 ### Configuring Queue Overflow Behavior
 
-The SDK provides configurable queue overflow strategies to handle different data criticality requirements. By default, the SDK uses a 100,000-message queue with DROP_OLDEST strategy (backward compatible).
+⚠️ **IMPORTANT: The SDK now uses an unlimited queue by default (max_size=0). This means the queue will NEVER drop messages, but can cause memory overflow if messages are produced faster than they are consumed. Monitor your application's memory usage carefully.**
+
+The SDK provides configurable queue overflow strategies to handle different data criticality requirements. By default, the SDK uses an unlimited queue with DROP_OLDEST strategy (which only applies if you set a max_size limit).
 
 #### For Critical Data (e.g., ANPR, Financial Transactions)
 
@@ -152,12 +154,23 @@ except QueueFullError as e:
 
 #### Adjusting Queue Size
 
+⚠️ **RECOMMENDED FOR PRODUCTION: Set an explicit queue size limit to prevent memory overflow.**
+
 ```python
 # For high-throughput systems (e.g., ANPR with 100+ cameras)
 sdk = configure_sdk(
     auth_strategy_type=AuthStrategyTypes.OIDC.value,
     env_config=EnvConfig.stellanow_prod(),
-    queue_max_size=500_000  # ~1.5 GB for metadata-only messages with S3 links
+    queue_max_size=500_000,  # ~1.5 GB for metadata-only messages with S3 links
+    queue_overflow_strategy=OverflowStrategy.RAISE_EXCEPTION  # Alert on queue full
+)
+
+# For typical production environments
+sdk = configure_sdk(
+    auth_strategy_type=AuthStrategyTypes.OIDC.value,
+    env_config=EnvConfig.stellanow_prod(),
+    queue_max_size=100_000,  # ~300 MB for metadata-only messages
+    queue_overflow_strategy=OverflowStrategy.DROP_OLDEST  # Drop old messages when full
 )
 
 # For low-memory environments
@@ -166,9 +179,16 @@ sdk = configure_sdk(
     env_config=EnvConfig.stellanow_prod(),
     queue_max_size=10_000  # ~30 MB
 )
+
+# For unlimited queue (default - use with caution!)
+sdk = configure_sdk(
+    auth_strategy_type=AuthStrategyTypes.OIDC.value,
+    env_config=EnvConfig.stellanow_prod(),
+    queue_max_size=0  # No limit - can cause out of memory errors!
+)
 ```
 
-> **Memory Usage:** For messages containing only metadata and S3 links (no embedded images), expect ~3 KB per message. A 100,000-message queue uses approximately 300 MB of memory.
+> **Memory Usage:** For messages containing only metadata and S3 links (no embedded images), expect ~3 KB per message. A 100,000-message queue uses approximately 300 MB of memory. An unlimited queue will grow without bound and can exhaust system memory.
 
 ## Sample Application
 Here is a simple application that uses StellaNowSDK to send user details messages to the Stella Now platform.
@@ -319,9 +339,10 @@ StellaNowSDK provides extensive flexibility for developers to adapt the SDK to t
 ### Customizing the Message Queue Strategy
 By default, `StellaNowPythonSDK` uses an in-memory queue to temporarily hold messages before sending them to a sink. The SDK provides built-in FIFO and LIFO queue strategies with configurable overflow behavior:
 
-- **Default Size:** 100,000 messages (~300 MB for metadata-only messages)
+- **Default Size:** 0 (unlimited) - ⚠️ **WARNING: Can cause memory overflow in production!**
 - **Overflow Strategies:** DROP_OLDEST (default), DROP_NEWEST, or RAISE_EXCEPTION
 - **Configurable via:** `configure_sdk()` parameters: `queue_max_size` and `queue_overflow_strategy`
+- **Recommendation:** Always set an explicit `queue_max_size` in production environments
 
 These non-persistent queues will lose all messages if the application terminates unexpectedly.
 

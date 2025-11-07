@@ -29,7 +29,7 @@ import pytest
 from stellanow_sdk_python.config.eniviroment_config.stellanow_env_config import EnvConfig
 from stellanow_sdk_python.config.stellanow_config import StellaProjectInfo
 from stellanow_sdk_python.sinks.mqtt.stellanow_mqtt_sink import StellaNowMqttSink
-from tests.conftest import TEST_ORG_ID, TEST_PROJECT_ID, TEST_CLIENT_ID
+from tests.conftest import TEST_CLIENT_ID, TEST_ORG_ID, TEST_PROJECT_ID
 
 
 @pytest.fixture
