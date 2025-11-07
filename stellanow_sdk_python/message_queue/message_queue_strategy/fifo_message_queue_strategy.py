@@ -34,17 +34,15 @@ class FifoMessageQueueStrategy(BaseDequeStrategy):
     Uses collections.deque for O(1) operations at both ends.
 
     Args:
-        max_size: Maximum number of messages in queue. Default is 100,000 (~300 MB for metadata-only messages).
-                  Set to 0 for unlimited (not recommended).
+        max_size: Maximum number of messages in queue. Default is 0 (unlimited).
+                  WARNING: Unlimited queue can cause memory overflow if messages are produced faster than consumed.
         overflow_strategy: Strategy for handling queue overflow. Default is DROP_OLDEST (backward compatible).
                           - DROP_OLDEST: Drop oldest message when full (default)
                           - DROP_NEWEST: Reject new message when full
                           - RAISE_EXCEPTION: Raise QueueFullError for application to handle
     """
 
-    def __init__(
-        self, max_size: int = 100_000, overflow_strategy: OverflowStrategy = OverflowStrategy.DROP_OLDEST
-    ) -> None:
+    def __init__(self, max_size: int = 0, overflow_strategy: OverflowStrategy = OverflowStrategy.DROP_OLDEST) -> None:
         super().__init__(max_size, overflow_strategy)
 
     def _drop_oldest(self) -> StellaNowEventWrapper:

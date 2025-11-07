@@ -227,7 +227,7 @@ class TestDefaultBehavior:
     """Tests for default queue behavior (backward compatibility)."""
 
     def test_default_max_size(self):
-        """Test that default max_size is 100,000."""
+        """Test that default max_size is 0 (unlimited)."""
         queue = FifoMessageQueueStrategy()
         # Just verify it's created successfully with default
         assert queue.get_message_count() == 0
