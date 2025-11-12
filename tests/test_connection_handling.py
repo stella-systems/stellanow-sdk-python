@@ -29,7 +29,7 @@ import pytest
 from stellanow_sdk_python.config.eniviroment_config.stellanow_env_config import EnvConfig
 from stellanow_sdk_python.config.stellanow_config import StellaProjectInfo
 from stellanow_sdk_python.sinks.mqtt.stellanow_mqtt_sink import StellaNowMqttSink
-from tests.conftest import TEST_ORG_ID, TEST_PROJECT_ID
+from tests.conftest import TEST_CLIENT_ID, TEST_ORG_ID, TEST_PROJECT_ID
 
 
 @pytest.fixture
@@ -216,7 +216,7 @@ class TestTokenRefreshRuntimeCheck:
         from stellanow_sdk_python.config.stellanow_auth_credentials import StellaNowCredentials
 
         credentials = StellaNowCredentials(
-            username="test", password=SecretStr("test"), client_id="test-client"
+            username="test", password=SecretStr("test"), client_id=TEST_CLIENT_ID
         )
         env_config = EnvConfig.stellanow_dev()
 
@@ -236,7 +236,7 @@ class TestTokenRefreshRuntimeCheck:
 
     @pytest.mark.asyncio
     async def test_refresh_access_token_explicit_none_check(self, project_info):
-        """Test that refresh_access_token() has explicit None check."""
+        """Test that refresh_access_token() raises TokenRefreshError on network errors."""
         from keycloak.exceptions import KeycloakError
         from pydantic import SecretStr
 
@@ -245,7 +245,7 @@ class TestTokenRefreshRuntimeCheck:
         from stellanow_sdk_python.config.stellanow_auth_credentials import StellaNowCredentials
 
         credentials = StellaNowCredentials(
-            username="test", password=SecretStr("test"), client_id="test-client"
+            username="test", password=SecretStr("test"), client_id=TEST_CLIENT_ID
         )
         env_config = EnvConfig.stellanow_dev()
 
@@ -253,16 +253,21 @@ class TestTokenRefreshRuntimeCheck:
             project_info=project_info, credentials=credentials, env_config=env_config
         )
 
-        # Set up initial token response
-        auth_service.token_response = {"refresh_token": "test_refresh"}
+        try:
+            # Set up initial token response
+            auth_service.token_response = {"refresh_token": "test_refresh"}
 
-        # Mock the keycloak refresh to fail
-        auth_service.keycloak_openid.a_refresh_token = AsyncMock(
-            side_effect=KeycloakError("Refresh failed", response_code=401)
-        )
+            # Mock the keycloak refresh to fail with network error (HTTP 500)
+            # Using 500 instead of 401 to avoid triggering re-authentication logic
+            auth_service.keycloak_openid.a_refresh_token = AsyncMock(
+                side_effect=KeycloakError("Refresh failed", response_code=500)
+            )
 
-        with pytest.raises(TokenRefreshError, match="Failed to refresh access token"):
-            await auth_service.refresh_access_token()
+            with pytest.raises(TokenRefreshError, match="Failed to refresh access token"):
+                await auth_service.refresh_access_token()
+        finally:
+            # Cleanup: stop any background refresh task that might have started
+            await auth_service.stop_refresh_task()
 
 
 class TestClientRecreation:
