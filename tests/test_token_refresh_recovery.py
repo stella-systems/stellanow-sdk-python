@@ -39,14 +39,20 @@ class TestPermanentAuthErrorDetection:
     """Test _is_permanent_auth_error helper method."""
 
     def test_detects_invalid_credentials(self):
-        """Test that invalid credentials errors are detected as permanent."""
+        """Test that invalid credentials errors are detected as permanent using generic patterns."""
         auth_service = create_auth_service()
 
         test_cases = [
-            (401, '{"error":"invalid_grant"}', True, "invalid_grant should be permanent"),
-            (401, "Invalid user credentials", True, "invalid user credentials should be permanent"),
-            (401, "account is disabled", True, "disabled account should be permanent"),
-            (401, "account is locked", True, "locked account should be permanent"),
+            # Generic patterns that work across Keycloak versions
+            (401, '{"error":"invalid_grant"}', True, "Contains 'grant' - permanent"),
+            (401, "Invalid user credentials", True, "Contains 'credential' - permanent"),
+            (401, "account is disabled", True, "Contains 'disabled' - permanent"),
+            (401, "account is locked", True, "Contains 'locked' - permanent"),
+            (401, "invalid_client", True, "Contains 'client' + 'invalid' - permanent"),
+            (401, "unauthorized_client", True, "Contains 'client' + 'unauthorized' - permanent"),
+            # Token expiration should NOT be permanent
+            (401, "token expired", False, "Token expiration - not permanent"),
+            (401, "refresh token invalid", False, "Refresh token issue - not permanent"),
         ]
 
         for error_code, error_msg, expected, description in test_cases:
@@ -99,25 +105,35 @@ class TestTokenExpirationErrorDetection:
             error = KeycloakError(error_message=error_msg, response_code=error_code)
             assert auth_service._is_token_expiration_error(error) is expected, description
 
-    def test_detects_message_patterns(self):
-        """Test that common expiration message patterns are detected."""
+    def test_detects_generic_token_patterns(self):
+        """Test that generic token expiration patterns are detected (Keycloak version-independent)."""
         auth_service = create_auth_service()
 
+        # Generic patterns: "token" + ("expired" OR "invalid" OR "not valid")
+        # These work across different Keycloak versions
         expiration_patterns = [
-            "Token expired",
-            "token is expired",
-            "INVALID REFRESH TOKEN",
-            "Refresh Token Expired",
-            "token not valid",
+            "Token expired",  # token + expired
+            "token is expired",  # token + expired
+            "INVALID REFRESH TOKEN",  # token + invalid
+            "Refresh Token Expired",  # token + expired
+            "token not valid",  # token + not valid
+            "access token invalid",  # token + invalid
         ]
 
         for pattern in expiration_patterns:
             error = KeycloakError(error_message=pattern, response_code=None)
             assert auth_service._is_token_expiration_error(error) is True, f"Failed to detect: {pattern}"
 
-        # Non-expiration message should not be detected
-        error = KeycloakError(error_message="Connection timeout", response_code=None)
-        assert auth_service._is_token_expiration_error(error) is False
+        # Non-expiration messages should not be detected
+        non_expiration_patterns = [
+            "Connection timeout",  # No "token" keyword
+            "Server error",  # No "token" keyword
+            "Invalid credentials",  # Has neither token nor expiration keywords
+        ]
+
+        for pattern in non_expiration_patterns:
+            error = KeycloakError(error_message=pattern, response_code=None)
+            assert auth_service._is_token_expiration_error(error) is False, f"Falsely detected: {pattern}"
 
 
 @pytest.mark.asyncio

@@ -157,9 +157,7 @@ class StellaNowAuthenticationService:
             return self.token_response["access_token"]
         except KeycloakError as e:
             error_status = getattr(e, "response_code", "Unknown")
-            error_message = (
-                getattr(e, "error_message", str(e)).splitlines()[0] if hasattr(e, "error_message") else str(e)[:100]
-            )
+            error_message = self._format_error_message(e)
             logger.error(f"Keycloak authentication failed: {error_status} - {error_message}")
             logger.debug(f"Full Keycloak error details: {e}")
 
@@ -174,7 +172,7 @@ class StellaNowAuthenticationService:
                     f"Permanent authentication failure: {error_status} - {error_message}",
                     error_code=error_status,
                     is_permanent=True,
-                ) from e
+                ) from None
 
             # Transient errors (network, server) - raise ValueError for retry
             raise ValueError(f"Failed to authenticate with Keycloak: {error_status} - {error_message}")
@@ -197,13 +195,45 @@ class StellaNowAuthenticationService:
             return True
         return datetime.now() >= self.token_expires
 
+    def _extract_error_info(self, error: KeycloakError) -> tuple[Optional[int], str]:
+        """Extract error code and lowercase message from KeycloakError."""
+        error_code = getattr(error, "response_code", None)
+        error_message = self._format_error_message(error).lower()
+        return error_code, error_message
+
     @staticmethod
-    def _is_permanent_auth_error(error: KeycloakError) -> bool:
+    def _format_error_message(error: KeycloakError) -> str:
+        """Format error message from KeycloakError, handling bytes and multiline messages."""
+        raw_message = getattr(error, "error_message", str(error))
+
+        # Handle bytes objects (decode to string)
+        if isinstance(raw_message, bytes):
+            raw_message = raw_message.decode("utf-8", errors="replace")
+
+        # Convert to string and take first line only
+        message = str(raw_message).splitlines()[0] if raw_message else str(error)[:100]
+
+        return message
+
+    def _is_html_response(self, error_message: str) -> bool:
+        """Check if error message looks like HTML (proxy/firewall error)."""
+        return "<!doctype html>" in error_message or "<html" in error_message
+
+    def _is_credential_error(self, error_message: str, error_code: Optional[int]) -> bool:
+        """Check if error indicates credential/grant issues (permanent auth problem)."""
+        return error_code == 401 and ("grant" in error_message or "credential" in error_message)
+
+    def _is_permanent_auth_error(self, error: KeycloakError) -> bool:
         """
         Check if a KeycloakError indicates a permanent authentication error.
 
         Permanent errors include invalid credentials, locked accounts, etc.
         These should NOT be retried automatically.
+
+        Detection strategy:
+        - Primary: HTTP status codes (version-independent)
+        - Secondary: Generic patterns in error messages (optional hints)
+        - Avoids exact string matching to remain compatible with Keycloak upgrades
 
         Args:
             error: The KeycloakError exception to check
@@ -211,51 +241,37 @@ class StellaNowAuthenticationService:
         Returns:
             True if the error is permanent (requires manual intervention), False otherwise
         """
-        error_code = getattr(error, "response_code", None)
-        error_message = str(error).lower()
+        error_code, error_message = self._extract_error_info(error)
 
-        # Check if error message looks like HTML (proxy/firewall error)
-        # HTML responses indicate network/infrastructure issues, not auth problems
-        if "<!doctype html>" in error_message or "<html" in error_message:
+        if self._is_html_response(error_message):
             return False
 
-        # HTTP 401 with specific error types indicates permanent credential issues
         if error_code == 401:
-            permanent_patterns = [
-                "invalid_grant",  # Wrong username/password
-                "invalid user credentials",
-                "invalid username or password",
-                "account is disabled",
-                "account is locked",
-                "unauthorized_client",  # Invalid client_id
-                "invalid_client",
-            ]
-            if any(pattern in error_message for pattern in permanent_patterns):
+            if self._is_credential_error(error_message, error_code):
                 return True
+            if "disabled" in error_message or "locked" in error_message:
+                return True
+            if "client" in error_message and ("invalid" in error_message or "unauthorized" in error_message):
+                return True
+            return False
 
-        # HTTP 403 with JSON error body indicates authorization issues
-        # But HTML responses are usually proxy/firewall blocks (transient)
         if error_code == 403:
-            # Check if it's a proper JSON error from Keycloak
-            if any(
-                pattern in error_message
-                for pattern in [
-                    "access_denied",
-                    "insufficient_scope",
-                    "forbidden",
-                    '"error"',  # JSON error response
-                ]
+            if '"error"' in error_message and any(
+                word in error_message for word in ["denied", "forbidden", "insufficient"]
             ):
                 return True
-            # HTML or other non-JSON response = network issue
             return False
 
         return False
 
-    @staticmethod
-    def _is_token_expiration_error(error: KeycloakError) -> bool:
+    def _is_token_expiration_error(self, error: KeycloakError) -> bool:
         """
         Check if a KeycloakError indicates an expired or invalid refresh token.
+
+        Detection strategy:
+        - Primary: HTTP status codes (400, 401 = token issues)
+        - Secondary: Generic patterns as hints (not exact strings)
+        - Designed to work across Keycloak versions
 
         Args:
             error: The KeycloakError exception to check
@@ -263,29 +279,18 @@ class StellaNowAuthenticationService:
         Returns:
             True if the error indicates token expiration/invalidity, False otherwise
         """
-        error_code = getattr(error, "response_code", None)
-        error_message = str(error).lower()
+        error_code, error_message = self._extract_error_info(error)
 
-        # Exclude permanent auth errors from token expiration detection
-        if error_code == 401 and any(
-            pattern in error_message
-            for pattern in ["invalid_grant", "invalid user credentials", "invalid username or password"]
-        ):
+        if self._is_credential_error(error_message, error_code):
             return False
 
-        # HTTP 400 (Bad Request) or 401 (Unauthorized) typically indicate expired/invalid tokens
         if error_code in [400, 401]:
             return True
 
-        # Check error message for common patterns
-        expiration_patterns = [
-            "token expired",
-            "token is expired",
-            "invalid refresh token",
-            "refresh token expired",
-            "token not valid",
-        ]
-        return any(pattern in error_message for pattern in expiration_patterns)
+        if "token" in error_message and any(word in error_message for word in ["expired", "invalid", "not valid"]):
+            return True
+
+        return False
 
     async def get_access_token(self) -> str:
         if self.token_response is None or self._is_token_expired():
@@ -334,5 +339,5 @@ class StellaNowAuthenticationService:
                         raise TokenRefreshError(
                             f"Both token refresh and re-authentication failed. "
                             f"Refresh error: {e}, Auth error: {auth_error}"
-                        ) from e
-                raise TokenRefreshError(f"Failed to refresh access token: {e}") from e
+                        ) from None
+                raise TokenRefreshError(f"Failed to refresh access token: {e}") from None

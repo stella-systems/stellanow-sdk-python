@@ -152,9 +152,20 @@ except QueueFullError as e:
 - **DROP_OLDEST**: Drops oldest messages when queue is full. Good for real-time data where newest matters most.
 - **DROP_NEWEST**: Rejects new messages when queue is full. Good for preserving historical data.
 
-#### Adjusting Queue Size
+#### Production Queue Recommendations
 
-⚠️ **RECOMMENDED FOR PRODUCTION: Set an explicit queue size limit to prevent memory overflow.**
+⚠️ **RECOMMENDED FOR PRODUCTION: Implement a persistent queue strategy.**
+
+The built-in in-memory queues (FIFO/LIFO) are designed for development and testing. For production systems, you should implement a custom persistent queue that:
+- Survives application restarts and crashes
+- Persists messages to disk, database, or distributed queue system
+- Provides guaranteed message delivery
+
+See the [Implementing a Persistent Queue](#implementing-a-persistent-queue) section below for details.
+
+#### Adjusting In-Memory Queue Size (Development/Testing)
+
+If using the default in-memory queue, configure size limits to prevent memory overflow:
 
 ```python
 # For high-throughput systems (e.g., ANPR with 100+ cameras)
@@ -165,7 +176,7 @@ sdk = configure_sdk(
     queue_overflow_strategy=OverflowStrategy.RAISE_EXCEPTION  # Alert on queue full
 )
 
-# For typical production environments (explicit size + strategy)
+# For typical environments (explicit size + strategy)
 sdk = configure_sdk(
     auth_strategy_type=AuthStrategyTypes.OIDC.value,
     env_config=EnvConfig.stellanow_prod(),
@@ -180,7 +191,7 @@ sdk = configure_sdk(
     queue_max_size=10_000  # ~30 MB
 )
 
-# For unlimited queue (default - use with caution!)
+# For unlimited queue (default - use ONLY for development/testing!)
 sdk = configure_sdk(
     auth_strategy_type=AuthStrategyTypes.OIDC.value,
     env_config=EnvConfig.stellanow_prod(),
@@ -189,6 +200,8 @@ sdk = configure_sdk(
 ```
 
 > **Memory Usage:** For messages containing only metadata and S3 links (no embedded images), expect ~3 KB per message. A 100,000-message queue uses approximately 300 MB of memory. An unlimited queue will grow without bound and can exhaust system memory.
+>
+> **⚠️ Important:** In-memory queues lose all unsent messages if the application terminates unexpectedly. For production systems requiring message durability, implement a persistent queue strategy.
 
 ## Sample Application
 Here is a simple application that uses StellaNowSDK to send user details messages to the Stella Now platform.
