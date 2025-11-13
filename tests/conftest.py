@@ -21,19 +21,30 @@ IN THE SOFTWARE.
 """
 
 import asyncio
+from uuid import UUID
 
 import pytest
+
+# Test constants
+TEST_ORG_ID = UUID("12345678-1234-5678-1234-567812345678")
+TEST_PROJECT_ID = UUID("87654321-4321-8765-4321-876543218765")
+TEST_CLIENT_ID = "test-client"
+TEST_USERNAME = "test-user"
+TEST_PASSWORD = "test-pass"
 
 
 @pytest.fixture(autouse=True)
 async def cleanup_sdk():
     """Fixture to clean up SDK and message queue tasks after each test."""
     yield
-    # Stop any running SDK or message queue tasks
-    for task in asyncio.all_tasks():
-        if task.get_coro().__qualname__.startswith("StellaNowMessageQueue._process_queue"):
+
+    # Cancel all tasks except the current one
+    current_task = asyncio.current_task()
+    tasks_to_cancel = [task for task in asyncio.all_tasks() if task is not current_task and not task.done()]
+
+    if tasks_to_cancel:
+        for task in tasks_to_cancel:
             task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
+
+        # Wait for all tasks to be cancelled with a timeout
+        await asyncio.gather(*tasks_to_cancel, return_exceptions=True)

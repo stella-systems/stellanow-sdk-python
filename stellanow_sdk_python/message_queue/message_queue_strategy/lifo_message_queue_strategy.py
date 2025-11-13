@@ -20,38 +20,46 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 """
 
-import queue
-import threading
-from queue import LifoQueue
 from typing import Optional
 
-from stellanow_sdk_python.message_queue.message_queue_strategy.i_message_queue_strategy import IMessageQueueStrategy
+from stellanow_sdk_python.message_queue.message_queue_strategy.base_deque_strategy import BaseDequeStrategy
+from stellanow_sdk_python.message_queue.message_queue_strategy.overflow_strategy import OverflowStrategy
 from stellanow_sdk_python.messages.event import StellaNowEventWrapper
 
 
-class LifoMessageQueueStrategy(IMessageQueueStrategy):
+class LifoMessageQueueStrategy(BaseDequeStrategy):
     """
     A last-in, first-out (LIFO) message_queue strategy for storing messages.
+
+    Uses collections.deque for O(1) operations at both ends, making DROP_OLDEST efficient.
+
+    Args:
+        max_size: Maximum number of messages in queue. Default is 0 (unlimited).
+                  WARNING: Unlimited queue can cause memory overflow if messages are produced faster than consumed.
+        overflow_strategy: Strategy for handling queue overflow. Default is RAISE_EXCEPTION.
+                          - RAISE_EXCEPTION: Raise QueueFullError for application to handle (default)
+                          - DROP_OLDEST: Drop oldest message when full
+                          - DROP_NEWEST: Reject new message when full
     """
 
-    def __init__(self) -> None:
-        self._queue: LifoQueue[StellaNowEventWrapper] = queue.LifoQueue()
-        self._lock = threading.Lock()
+    def __init__(
+        self, max_size: int = 0, overflow_strategy: OverflowStrategy = OverflowStrategy.RAISE_EXCEPTION
+    ) -> None:
+        super().__init__(max_size, overflow_strategy)
+
+    def _drop_oldest(self) -> StellaNowEventWrapper:
+        """Remove oldest message from LIFO queue (left side)."""
+        return self._queue.popleft()
 
     def enqueue(self, message: StellaNowEventWrapper) -> None:
         with self._lock:
-            self._queue.put(message)
+            if self._handle_overflow(message):
+                # LIFO: append to right, pop from right
+                self._queue.append(message)
 
     def try_dequeue(self) -> Optional[StellaNowEventWrapper]:
         with self._lock:
-            if not self._queue.empty():
-                return self._queue.get()
+            if self._queue:
+                # LIFO: pop from right (most recent)
+                return self._queue.pop()
             return None
-
-    def is_empty(self) -> bool:
-        with self._lock:
-            return self._queue.empty()
-
-    def get_message_count(self) -> int:
-        with self._lock:
-            return self._queue.qsize()

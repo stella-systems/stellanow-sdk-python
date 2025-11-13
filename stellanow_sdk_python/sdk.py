@@ -37,6 +37,7 @@ This demo sends two `UserDetailsMessage` events, simulating real-time user data 
 lifecycle: initialization, event sending, and shutdown.
 """
 
+import asyncio
 import time
 from typing import Optional
 
@@ -90,7 +91,7 @@ class StellaNowSDK:
         else:
             raise ValueError(f"Expected StellaNowMessageBase or StellaNowMessageWrapper, got {type(message)}")
 
-    def wait_for_queue_to_empty(self, timeout: Optional[float] = None) -> bool:
+    async def wait_for_queue_to_empty(self, timeout: Optional[float] = None) -> bool:
         """
         Waits for the message queue to be empty before proceeding.
         :param timeout: Maximum time to wait (in seconds). If None, waits indefinitely.
@@ -101,13 +102,13 @@ class StellaNowSDK:
             if timeout is not None and (time.time() - start_time) > timeout:
                 logger.warning("Timeout reached while waiting for the message queue to empty.")
                 return False
-            time.sleep(0.1)
+            await asyncio.sleep(0.1)
         logger.info("Message queue is empty.")
         return True
 
     async def stop(self) -> None:
         """Stops the SDK after ensuring the message queue is empty."""
-        self.wait_for_queue_to_empty(timeout=10)
+        await self.wait_for_queue_to_empty(timeout=10)
         await self.__message_queue.stop_processing(timeout=5.0)
         await self.__sink.disconnect()
         logger.info("SDK stopped successfully")

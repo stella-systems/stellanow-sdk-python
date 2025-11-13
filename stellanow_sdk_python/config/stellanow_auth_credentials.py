@@ -23,7 +23,7 @@ IN THE SOFTWARE.
 import os
 from typing import Dict, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, SecretStr
 from typing_extensions import TypedDict
 
 from stellanow_sdk_python.config.enums.auth_strategy import AuthStrategyTypes
@@ -56,7 +56,7 @@ STRATEGY_CONFIG: Dict[str, list[CredentialFieldMapping]] = {
 
 class StellaNowCredentials(BaseModel):
     username: Optional[str] = None
-    password: Optional[str] = None
+    password: Optional[SecretStr] = None
     client_id: Optional[str] = DEFAULT_OIDC_CLIENT_ID
 
     def is_valid(self, auth_strategy: str) -> bool:

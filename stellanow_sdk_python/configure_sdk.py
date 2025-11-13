@@ -20,7 +20,9 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 """
 
+import importlib.metadata
 import sys
+from typing import Optional
 
 from loguru import logger
 
@@ -36,6 +38,7 @@ from stellanow_sdk_python.message_queue.message_queue_strategy.i_message_queue_s
 from stellanow_sdk_python.message_queue.message_queue_strategy.lifo_message_queue_strategy import (
     LifoMessageQueueStrategy,
 )
+from stellanow_sdk_python.message_queue.message_queue_strategy.overflow_strategy import OverflowStrategy
 from stellanow_sdk_python.sdk import StellaNowSDK
 from stellanow_sdk_python.sinks.mqtt.auth_strategy.auth_factory import create_auth_strategy
 from stellanow_sdk_python.sinks.mqtt.stellanow_mqtt_sink import StellaNowMqttSink
@@ -46,6 +49,8 @@ def configure_sdk(
     env_config: StellaNowEnvironmentConfig,
     queue_strategy_type: str = MessageQueueType.FIFO.value,
     logger_level: LoggerLevel = LoggerLevel.INFO,
+    queue_max_size: Optional[int] = None,
+    queue_overflow_strategy: Optional[OverflowStrategy] = None,
 ) -> StellaNowSDK:
     """
     Generic method to configure and return a StellaNowSDK instance.
@@ -55,6 +60,12 @@ def configure_sdk(
         env_config (StellaNowEnvironmentConfig): Environment configuration (e.g., from EnvConfig).
         queue_strategy_type (str, optional): Queue strategy ("fifo" or "lifo"). Defaults to "fifo".
         logger_level (LoggerLevel, optional): Logging level for the SDK. Defaults to LoggerLevel.INFO.
+        queue_max_size (int, optional): Maximum queue size. Defaults to 100,000 (~300 MB for metadata-only messages).
+                                       Set to 0 for unlimited (not recommended).
+        queue_overflow_strategy (OverflowStrategy, optional): How to handle queue overflow.
+                                                             - DROP_OLDEST: Drop oldest message when full (default)
+                                                             - DROP_NEWEST: Reject new message when full
+                                                             - RAISE_EXCEPTION: Raise QueueFullError (for critical data)
 
     Returns:
         StellaNowSDK: A configured SDK instance.
@@ -63,9 +74,10 @@ def configure_sdk(
         ValueError: If required environment variables are missing or invalid.
     """
     try:
+        version = importlib.metadata.version("stellanow-sdk-python")
         logger.remove()
         logger.add(sys.stderr, level=logger_level.value)
-        logger.info("Starting StellaNow SDK demo...")
+        logger.info(f"Starting StellaNow SDK (v:{version}) ...")
 
         # Load project info
         project_info = project_info_from_env()
@@ -85,7 +97,15 @@ def configure_sdk(
             MessageQueueType.LIFO.value: LifoMessageQueueStrategy,
         }
         queue_strategy_class = queue_strategies.get(queue_strategy_type, FifoMessageQueueStrategy)
-        queue_strategy = queue_strategy_class()
+
+        # Build queue strategy kwargs (only include non-None values to use defaults)
+        queue_kwargs = {}
+        if queue_max_size is not None:
+            queue_kwargs["max_size"] = queue_max_size
+        if queue_overflow_strategy is not None:
+            queue_kwargs["overflow_strategy"] = queue_overflow_strategy
+
+        queue_strategy = queue_strategy_class(**queue_kwargs)
         mqtt_sink = StellaNowMqttSink(auth_strategy=auth_strategy, env_config=env_config, project_info=project_info)
         sdk = StellaNowSDK(project_info=project_info, sink=mqtt_sink, queue_strategy=queue_strategy)
         logger.info(f"SDK initialized with MQTT sink and {queue_strategy_type.upper()} queue strategy.")

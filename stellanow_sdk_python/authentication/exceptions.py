@@ -20,24 +20,34 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 """
 
-import paho.mqtt.client as mqtt
-from loguru import logger
 
-from stellanow_sdk_python.config.stellanow_auth_credentials import StellaNowCredentials
-from stellanow_sdk_python.sinks.mqtt.auth_strategy.i_mqtt_auth_strategy import IMqttAuthStrategy
+class TokenRefreshError(Exception):
+    """
+    Raised when token refresh operation fails.
+
+    This exception indicates that both:
+    1. Refresh token refresh failed (e.g., expired refresh token)
+    2. Fallback to full re-authentication also failed
+
+    This is a critical error that typically requires manual intervention,
+    such as updating credentials or checking Keycloak availability.
+    """
 
 
-class UserPassAuthMqttAuthStrategy(IMqttAuthStrategy):
-    """Username/password authentication strategy for MQTT connections."""
+class AuthenticationError(Exception):
+    """
+    Raised when authentication fails due to permanent errors.
 
-    def __init__(self, credentials: StellaNowCredentials):
-        self.credentials = credentials
+    This exception indicates a non-recoverable authentication error, such as:
+    - Invalid username/password (HTTP 401 with invalid_grant)
+    - Invalid client credentials
+    - User account locked/disabled
 
-    async def authenticate(self, client: mqtt.Client) -> None:
-        logger.info("Authenticating MQTT client using username/password.")
-        try:
-            password_value = self.credentials.password.get_secret_value() if self.credentials.password else None
-            client.username_pw_set(self.credentials.username, password_value)
-        except (ValueError, RuntimeError) as e:
-            logger.error(f"Username/password authentication failed: {e}")
-            raise ValueError("Failed to authenticate MQTT client using username/password.")
+    These errors should NOT be retried automatically as they require
+    manual intervention (updating credentials, unlocking account, etc.).
+    """
+
+    def __init__(self, message: str, error_code: int | None = None, is_permanent: bool = True):
+        super().__init__(message)
+        self.error_code = error_code
+        self.is_permanent = is_permanent
