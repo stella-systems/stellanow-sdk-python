@@ -87,13 +87,18 @@ class StellaNowAuthenticationService:
         3. Refreshes the token using the refresh_token
         4. Falls back to full re-authentication if refresh token is expired
         5. Notifies registered callbacks of the new token
-        6. Retries with exponential backoff on transient failures (network errors)
+        6. Retries with adaptive backoff based on error type:
+           - Server errors (503/502): 5-10 second backoff (aggressive retry)
+           - Network errors: 1-30 second backoff (moderate retry)
+           - Other errors: 1-60 second backoff (conservative retry)
 
         If no valid token exists, it will retry authentication every second.
         This ensures the SDK always has a valid token for MQTT authentication.
         """
-        retry_delay = 1  # Initial retry delay for transient errors
-        max_retry_delay = 60  # Cap at 60 seconds
+        retry_delay = 1
+        max_retry_delay = 60
+        server_error_max_delay = 10
+        network_error_max_delay = 30
 
         while True:
             if self.token_response and self.token_expires and not self._is_token_expired():
@@ -108,25 +113,31 @@ class StellaNowAuthenticationService:
 
             try:
                 await self.refresh_access_token()
-                # Reset retry delay on success
                 retry_delay = 1
+                logger.debug("Token refresh successful, retry delay reset to 1 second")
             except TokenRefreshError as e:
-                # TokenRefreshError means BOTH refresh and re-auth failed
-                # This is a critical error - likely credential issue or Keycloak down
-                logger.error(f"Critical: Token refresh and re-authentication both failed: {e}")
-                if self._is_token_expired():
+                error_str = str(e).lower()
+                is_server_error = any(code in error_str for code in ["503", "502", "500", "<html"])
+
+                if is_server_error:
+                    logger.warning(
+                        f"Server error detected (503/502/500). Keycloak may be temporarily down. "
+                        f"Retrying aggressively with {min(retry_delay, server_error_max_delay)}s delay."
+                    )
+                    await asyncio.sleep(min(retry_delay, server_error_max_delay))
+                    retry_delay = min(retry_delay * 2, server_error_max_delay)
+                elif self._is_token_expired():
                     logger.warning("Token is expired, retrying immediately with re-authentication.")
-                    # Reset delay for immediate retry
                     retry_delay = 1
                     continue
-                # Exponential backoff for transient errors
-                await asyncio.sleep(retry_delay)
-                retry_delay = min(retry_delay * 2, max_retry_delay)
+                else:
+                    logger.error(f"Critical: Token refresh and re-authentication both failed: {e}")
+                    await asyncio.sleep(retry_delay)
+                    retry_delay = min(retry_delay * 2, max_retry_delay)
             except (ConnectionError, asyncio.TimeoutError) as e:
-                # Network errors - use exponential backoff
                 logger.error(f"Network error during token refresh: {e}")
-                await asyncio.sleep(retry_delay)
-                retry_delay = min(retry_delay * 2, max_retry_delay)
+                await asyncio.sleep(min(retry_delay, network_error_max_delay))
+                retry_delay = min(retry_delay * 2, network_error_max_delay)
             except (KeycloakError, ValueError) as e:
                 logger.error(f"Unexpected error in auto-refresh: {e}")
                 if self._is_token_expired():
@@ -161,7 +172,6 @@ class StellaNowAuthenticationService:
             logger.error(f"Keycloak authentication failed: {error_status} - {error_message}")
             logger.debug(f"Full Keycloak error details: {e}")
 
-            # Check if this is a permanent error (invalid credentials, etc.)
             if self._is_permanent_auth_error(e):
                 logger.critical(
                     f"Permanent authentication error detected: {error_message}. "
@@ -174,16 +184,42 @@ class StellaNowAuthenticationService:
                     is_permanent=True,
                 ) from None
 
-            # Transient errors (network, server) - raise ValueError for retry
             raise ValueError(f"Failed to authenticate with Keycloak: {error_status} - {error_message}")
         except (ValueError, ConnectionError, asyncio.TimeoutError) as e:
             logger.error(f"Unexpected authentication error: {e}")
             raise ValueError(f"Authentication failed: {e}")
 
     async def authenticate(self) -> str:
-        """Authenticate and get the access token asynchronously."""
+        """
+        Authenticate and get the access token asynchronously.
+
+        Retries up to 2 times on invalid_grant errors to handle race conditions when multiple
+        SDK instances authenticate simultaneously with the same credentials.
+        Uses exponential backoff: 100ms, then 300ms.
+        """
         async with self.lock:
-            return await self._authenticate_internal()
+            max_retries = 2
+            retry_delays = [0.1, 0.3]  # 100ms, 300ms
+
+            for attempt in range(max_retries + 1):
+                try:
+                    return await self._authenticate_internal()
+                except AuthenticationError as e:
+                    if e.error_code == 401 and "invalid_grant" in str(e).lower() and attempt < max_retries:
+                        delay = retry_delays[attempt]
+                        logger.warning(
+                            f"Authentication attempt {attempt + 1} failed with invalid_grant. "
+                            f"This may be due to concurrent authentication from multiple workers. "
+                            f"Retrying after {delay * 1000:.0f}ms delay... (attempt {attempt + 2}/{max_retries + 1})"
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+                    if attempt == max_retries:
+                        logger.error(
+                            f"Authentication failed after {max_retries + 1} attempts. "
+                            f"This is likely a real credential problem, not a race condition."
+                        )
+                    raise
 
     @staticmethod
     def _calculate_token_expires_time(token_response: Dict[str, Any]) -> datetime:
@@ -222,6 +258,28 @@ class StellaNowAuthenticationService:
     def _is_credential_error(self, error_message: str, error_code: Optional[int]) -> bool:
         """Check if error indicates credential/grant issues (permanent auth problem)."""
         return error_code == 401 and ("grant" in error_message or "credential" in error_message)
+
+    def _is_server_error(self, error: KeycloakError) -> bool:
+        """
+        Check if a KeycloakError indicates a transient server error.
+
+        Server errors (5xx) indicate temporary service unavailability and should be
+        retried aggressively with shorter backoff delays.
+
+        Args:
+            error: The KeycloakError exception to check
+
+        Returns:
+            True if the error is a transient server error (5xx), False otherwise
+        """
+        error_code, error_message = self._extract_error_info(error)
+        if self._is_html_response(error_message):
+            return True
+
+        if error_code is not None and 500 <= error_code < 600:
+            return True
+
+        return False
 
     def _is_permanent_auth_error(self, error: KeycloakError) -> bool:
         """
@@ -324,6 +382,17 @@ class StellaNowAuthenticationService:
                 return access_token
             except KeycloakError as e:
                 logger.error(f"Failed to refresh access token: {e}")
+
+                if self._is_server_error(e):
+                    error_code = getattr(e, "response_code", "Unknown")
+                    logger.warning(
+                        f"Server error {error_code} detected during token refresh. "
+                        "Keycloak may be temporarily unavailable. Clearing token state and will retry."
+                    )
+                    self.token_response = None
+                    self.token_expires = None
+                    raise TokenRefreshError(f"Server error during token refresh: {error_code} - {e}") from None
+
                 if self._is_token_expiration_error(e):
                     error_code = getattr(e, "response_code", "Unknown")
                     logger.warning(
@@ -334,6 +403,18 @@ class StellaNowAuthenticationService:
                         self.token_response = None
                         self.token_expires = None
                         return await self._authenticate_internal()
+                    except KeycloakError as auth_error:
+                        if self._is_server_error(auth_error):
+                            logger.warning("Re-authentication failed due to server error. Will retry shortly.")
+                            raise TokenRefreshError(
+                                f"Both token refresh and re-authentication failed due to server errors. "
+                                f"Refresh error: {e}, Auth error: {auth_error}"
+                            ) from None
+                        logger.error(f"Re-authentication also failed: {auth_error}")
+                        raise TokenRefreshError(
+                            f"Both token refresh and re-authentication failed. "
+                            f"Refresh error: {e}, Auth error: {auth_error}"
+                        ) from None
                     except Exception as auth_error:
                         logger.error(f"Re-authentication also failed: {auth_error}")
                         raise TokenRefreshError(

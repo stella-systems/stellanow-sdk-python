@@ -187,7 +187,7 @@ class TestRefreshTokenRecovery:
         with pytest.raises(TokenRefreshError) as exc_info:
             await auth_service.refresh_access_token()
 
-        assert "Failed to refresh access token" in str(exc_info.value)
+        assert "Server error during token refresh" in str(exc_info.value)
 
     async def test_both_refresh_and_reauth_fail(self):
         """Test that TokenRefreshError is raised when both refresh and re-authentication fail."""
@@ -312,28 +312,38 @@ class TestAutoRefreshRecovery:
             # Setup: short-lived token
             setup_auth_service_with_token(auth_service, create_token_response(expires_in=1))
 
-            # Mock: first call fails, second succeeds (should reset delay) with SHORT-LIVED token
+            # Mock: first call fails with 500 (server error), second succeeds with SHORT-LIVED token
             success_token = create_token_response("new_token", "new_refresh", expires_in=1)
-            call_count = 0
+            refresh_call_count = 0
+            auth_call_count = 0
 
             async def mock_refresh(token):
-                nonlocal call_count
-                call_count += 1
-                if call_count == 1:
+                nonlocal refresh_call_count
+                refresh_call_count += 1
+                if refresh_call_count == 1:
                     raise KeycloakError(error_message="Timeout", response_code=500)
                 return success_token
 
+            async def mock_auth(*args, **kwargs):
+                # After 500 error, token state is cleared, so re-authentication will be attempted
+                nonlocal auth_call_count
+                auth_call_count += 1
+                return success_token
+
             auth_service.keycloak_openid.a_refresh_token = AsyncMock(side_effect=mock_refresh)
+            auth_service.keycloak_openid.a_token = AsyncMock(side_effect=mock_auth)
 
             # Start refresh task
             await auth_service.start_refresh_task()
 
             # Wait for retry and recovery
+            # After 500 error, token is cleared, so it will attempt re-authentication
             await asyncio.sleep(5)
 
-            # Verify: recovered (called at least twice: once failed, once succeeded)
+            # Verify: recovered (either through refresh or re-authentication)
             assert auth_service.token_response is not None
-            assert call_count >= 2
+            # At least one attempt should have been made (either refresh or re-auth)
+            assert (refresh_call_count + auth_call_count) >= 2
         finally:
             # Cleanup
             await auth_service.stop_refresh_task()

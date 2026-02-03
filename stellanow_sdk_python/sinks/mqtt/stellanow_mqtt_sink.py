@@ -51,6 +51,7 @@ class StellaNowMqttSink(IStellaNowSink):
         self.client_id = f"StellaNowSDKPython_{generate(size=10)}"
 
         self._is_connected_event = asyncio.Event()
+        self._auth_recovered_event = asyncio.Event()
         self._shutdown = False
         self._monitor_task: Optional[asyncio.Task[None]] = None
         self._client_lock = asyncio.Lock()  # Protects concurrent access to self.client
@@ -59,10 +60,24 @@ class StellaNowMqttSink(IStellaNowSink):
 
         if isinstance(self.auth_strategy, OidcMqttAuthStrategy):
             self.auth_strategy.set_client_lock(self._client_lock)
+            self.auth_strategy.auth_service.register_token_update_callback(self._on_auth_recovered)
 
         self.client.loop_start()
 
         logger.info(f'SDK Client ID is "{self.client_id}"')
+
+    async def _on_auth_recovered(self, new_token: str) -> None:  # noqa
+        """
+        Callback invoked when auth service successfully refreshes token.
+
+        This signals the connection monitor to attempt immediate reconnection
+        instead of waiting for exponential backoff delay.
+
+        Args:
+            new_token: The newly refreshed access token
+        """
+        logger.info("Auth service recovered - signaling connection monitor for immediate retry")
+        self._auth_recovered_event.set()
 
     def _create_mqtt_client(self) -> mqtt.Client:
         """
@@ -281,8 +296,11 @@ class StellaNowMqttSink(IStellaNowSink):
         2. Create a new MQTT client
         3. Authenticate with the configured strategy
         4. Attempt to connect with exponential backoff on failure
+        5. Listen for auth recovery events to retry immediately
 
         The reconnection attempts have exponential backoff with a maximum delay of 60 seconds.
+        However, if the auth service recovers (successfully refreshes token), the monitor
+        will immediately attempt reconnection instead of waiting for backoff delay.
         """
         logger.info("Started connection monitor")
         attempt = 1
@@ -311,6 +329,7 @@ class StellaNowMqttSink(IStellaNowSink):
                         await asyncio.wait_for(self._is_connected_event.wait(), timeout=5.0)
                         logger.info("Successfully connected to MQTT broker")
                         attempt = 1  # Reset attempt counter on success
+                        self._auth_recovered_event.clear()
                     except AuthenticationError as e:
                         # Permanent authentication error - stop retrying
                         logger.critical(
@@ -334,6 +353,14 @@ class StellaNowMqttSink(IStellaNowSink):
                         self.client = None
                         attempt += 1
                         retry_delay = min(attempt * 10, 60)
-                        logger.info(f"Retrying connection in {retry_delay} seconds...")
-                        await asyncio.sleep(retry_delay)
-            await asyncio.sleep(2.5)
+                        logger.info(f"Waiting {retry_delay}s before retry (or until auth recovers)...")
+
+                        try:
+                            await asyncio.wait_for(self._auth_recovered_event.wait(), timeout=retry_delay)
+                            logger.info("Auth service recovered! Attempting immediate reconnection...")
+                            self._auth_recovered_event.clear()
+                            attempt = 1
+                        except asyncio.TimeoutError:
+                            pass
+            else:
+                await asyncio.sleep(2.5)
