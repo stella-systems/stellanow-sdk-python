@@ -2,36 +2,17 @@
 
 import asyncio
 from datetime import datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 from keycloak.exceptions import KeycloakError
-
-from stellanow_sdk_python.authentication.auth_service import StellaNowAuthenticationService
-from stellanow_sdk_python.config.eniviroment_config.stellanow_env_config import EnvConfig
-from stellanow_sdk_python.config.stellanow_auth_credentials import StellaNowCredentials
-from stellanow_sdk_python.config.stellanow_config import StellaProjectInfo
-from tests.conftest import TEST_CLIENT_ID, TEST_ORG_ID, TEST_PASSWORD, TEST_PROJECT_ID, TEST_USERNAME
-
-
-def create_auth_service() -> StellaNowAuthenticationService:
-    """Create a test authentication service instance."""
-    project_info = StellaProjectInfo(organization_id=TEST_ORG_ID, project_id=TEST_PROJECT_ID)
-    credentials = StellaNowCredentials(client_id=TEST_CLIENT_ID, username=TEST_USERNAME, password=TEST_PASSWORD)
-    env_config = EnvConfig.stellanow_dev()
-    return StellaNowAuthenticationService(project_info=project_info, credentials=credentials, env_config=env_config)
-
-
-def create_token_response(access_token: str = "test_token", refresh_token: str = "test_refresh", expires_in: int = 300):
-    """Create a standard token response dictionary."""
-    return {"access_token": access_token, "refresh_token": refresh_token, "expires_in": expires_in}
 
 
 @pytest.mark.asyncio
 class TestMultiInstanceAuthentication:
     """Test authentication with multiple SDK instances (simulating Nuclio numWorkers: 2)."""
 
-    async def test_two_instances_authenticate_independently(self):
+    async def test_two_instances_authenticate_independently(self, create_auth_service, create_token_response):
         """Test that two SDK instances can authenticate independently without conflicts."""
         # Create two separate auth service instances (like two Nuclio workers)
         auth_service_1 = create_auth_service()
@@ -56,7 +37,7 @@ class TestMultiInstanceAuthentication:
         assert auth_service_1.token_response["access_token"] == "token_worker_1"
         assert auth_service_2.token_response["access_token"] == "token_worker_2"
 
-    async def test_two_instances_with_same_credentials_no_deadlock(self):
+    async def test_two_instances_with_same_credentials_no_deadlock(self, create_auth_service, create_token_response):
         """Test that two instances using same credentials don't deadlock during authentication."""
         auth_service_1 = create_auth_service()
         auth_service_2 = create_auth_service()
@@ -94,7 +75,7 @@ class TestMultiInstanceAuthentication:
         except asyncio.TimeoutError:
             pytest.fail("Authentication deadlocked with two instances - CONFIRMED BUG!")
 
-    async def test_two_instances_refresh_tokens_simultaneously(self):
+    async def test_two_instances_refresh_tokens_simultaneously(self, create_auth_service, create_token_response):
         """Test that two instances can refresh tokens simultaneously without conflicts."""
         auth_service_1 = create_auth_service()
         auth_service_2 = create_auth_service()
@@ -124,7 +105,7 @@ class TestMultiInstanceAuthentication:
         assert auth_service_1.token_response["access_token"] == "new_token_1"
         assert auth_service_2.token_response["access_token"] == "new_token_2"
 
-    async def test_two_instances_one_fails_other_succeeds(self):
+    async def test_two_instances_one_fails_other_succeeds(self, create_auth_service, create_token_response):
         """Test that one instance failing doesn't affect the other instance."""
         auth_service_1 = create_auth_service()
         auth_service_2 = create_auth_service()
@@ -148,7 +129,7 @@ class TestMultiInstanceAuthentication:
         assert results[1] == "token_worker_2"
         assert auth_service_2.token_response["access_token"] == "token_worker_2"
 
-    async def test_shared_lock_doesnt_exist_between_instances(self):
+    async def test_shared_lock_doesnt_exist_between_instances(self, create_auth_service):
         """Verify that each instance has its own lock (not shared)."""
         auth_service_1 = create_auth_service()
         auth_service_2 = create_auth_service()
@@ -157,7 +138,7 @@ class TestMultiInstanceAuthentication:
         assert auth_service_1.lock is not auth_service_2.lock
         assert id(auth_service_1.lock) != id(auth_service_2.lock)
 
-    async def test_nuclio_scenario_two_workers_init_context(self):
+    async def test_nuclio_scenario_two_workers_init_context(self, create_auth_service, create_token_response):
         """
         Simulate the actual Nuclio scenario:
         - Two workers (separate Python processes in reality, but we simulate with asyncio)

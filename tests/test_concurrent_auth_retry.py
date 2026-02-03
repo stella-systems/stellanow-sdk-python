@@ -6,32 +6,14 @@ from unittest.mock import AsyncMock
 import pytest
 from keycloak.exceptions import KeycloakError
 
-from stellanow_sdk_python.authentication.auth_service import StellaNowAuthenticationService
 from stellanow_sdk_python.authentication.exceptions import AuthenticationError
-from stellanow_sdk_python.config.eniviroment_config.stellanow_env_config import EnvConfig
-from stellanow_sdk_python.config.stellanow_auth_credentials import StellaNowCredentials
-from stellanow_sdk_python.config.stellanow_config import StellaProjectInfo
-from tests.conftest import TEST_CLIENT_ID, TEST_ORG_ID, TEST_PASSWORD, TEST_PROJECT_ID, TEST_USERNAME
-
-
-def create_auth_service() -> StellaNowAuthenticationService:
-    """Create a test authentication service instance."""
-    project_info = StellaProjectInfo(organization_id=TEST_ORG_ID, project_id=TEST_PROJECT_ID)
-    credentials = StellaNowCredentials(client_id=TEST_CLIENT_ID, username=TEST_USERNAME, password=TEST_PASSWORD)
-    env_config = EnvConfig.stellanow_dev()
-    return StellaNowAuthenticationService(project_info=project_info, credentials=credentials, env_config=env_config)
-
-
-def create_token_response(access_token: str = "test_token", refresh_token: str = "test_refresh", expires_in: int = 300):
-    """Create a standard token response dictionary."""
-    return {"access_token": access_token, "refresh_token": refresh_token, "expires_in": expires_in}
 
 
 @pytest.mark.asyncio
 class TestConcurrentAuthenticationRetry:
     """Test authentication retry logic for race conditions during concurrent authentication."""
 
-    async def test_invalid_grant_retries_once_and_succeeds(self):
+    async def test_invalid_grant_retries_once_and_succeeds(self, create_auth_service, create_token_response):
         """
         Test that invalid_grant error during initial auth triggers a retry that succeeds.
 
@@ -66,7 +48,7 @@ class TestConcurrentAuthenticationRetry:
         assert call_count == 2  # Called twice (initial + retry)
         assert auth_service.token_response == success_token
 
-    async def test_invalid_grant_retries_then_fails(self):
+    async def test_invalid_grant_retries_then_fails(self, create_auth_service):
         """
         Test that invalid_grant error that persists after retries raises AuthenticationError.
 
@@ -89,7 +71,7 @@ class TestConcurrentAuthenticationRetry:
         assert "invalid_grant" in str(exc_info.value).lower()
         assert auth_service.keycloak_openid.a_token.call_count == 3  # Initial + 2 retries
 
-    async def test_other_401_errors_not_retried(self):
+    async def test_other_401_errors_not_retried(self, create_auth_service):
         """
         Test that 401 errors that are NOT invalid_grant are not retried.
 
@@ -111,7 +93,7 @@ class TestConcurrentAuthenticationRetry:
 
         assert auth_service.keycloak_openid.a_token.call_count == 1  # No retry
 
-    async def test_two_workers_concurrent_auth_with_retry(self):
+    async def test_two_workers_concurrent_auth_with_retry(self, create_auth_service, create_token_response):
         """
         Test realistic numWorkers:2 scenario where one worker gets invalid_grant.
 
@@ -158,7 +140,7 @@ class TestConcurrentAuthenticationRetry:
         assert worker_1_call_count == 2  # Worker 1 retried
         assert worker_2_auth.keycloak_openid.a_token.call_count == 1  # Worker 2 succeeded first try
 
-    async def test_retry_delay_desynchronizes_workers(self):
+    async def test_retry_delay_desynchronizes_workers(self, create_auth_service, create_token_response):
         """
         Test that the 100ms retry delay helps desynchronize workers.
 
