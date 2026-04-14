@@ -8,16 +8,17 @@ authors = [
 license = {text = "This project is licensed under the terms of the MIT license."}
 readme = "README.md"
 requires-python = ">=3.11,<4.0"
+dynamic = ["dependencies"]
 exclude = ["tests/"]
 
-dependencies = [
-    "loguru (>=0.7.2,<0.8.0)",
-    "typing-extensions (>=4.10.0,<5.0.0)",
-    "stellanow-api-internals (>=0.0.5)",
-    "paho-mqtt (>=2.1.0,<3.0.0)",
-    "pydantic (>=2.10.6,<3.0.0)",
-    "nanoid (>=2.0.0,<3.0.0)"
-]
+[tool.poetry.dependencies]
+python = "^3.11"
+loguru = "^0.7.2"
+typing-extensions = "^4.10.0"
+stellanow-api-internals = ">=0.0.5"
+paho-mqtt = "^2.1.0"
+pydantic = "^2.10.6"
+nanoid = "^2.0.0"
 
 [tool.poetry.group.dev.dependencies]
 autoflake = "^2.3.1"
