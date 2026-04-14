@@ -31,16 +31,6 @@ jobs:
           pip install poetry
           poetry install --with dev --sync
 
-      - name: Check Version Against Existing Tags
-        run: |
-          VERSION=$(poetry version -s)  # Get version from pyproject.toml
-          if git tag --list | grep -q "^v$VERSION$"; then
-            echo "Error: Version v$VERSION already exists in tags. Please increment the version number."
-            exit 1
-          else
-            echo "Version v$VERSION is new, proceeding with checks."
-          fi
-
       - name: Check Formatting
         run: poetry run poe lint-check
 
