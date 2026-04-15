@@ -1479,14 +1479,14 @@ tests = ["cython", "littleutils", "pygments", "pytest", "typeguard"]
 
 [[package]]
 name = "stellanow-api-internals"
-version = "0.0.5"
+version = "0.0.8"
 description = "Library for communicating with the internal API of StellaNow platform."
 optional = false
 python-versions = "<4.0,>=3.11"
 groups = ["main"]
 files = [
-    {file = "stellanow_api_internals-0.0.5-py3-none-any.whl", hash = "sha256:644c389c0d9905bbf95299291cf8315cf783d0bbe0b1d0cb5287c0bef379c982"},
-    {file = "stellanow_api_internals-0.0.5.tar.gz", hash = "sha256:d41714b5bc287e509f1f51f2bab1146cca99fc65b26e1a7ac705baacef95c5b6"},
+    {file = "stellanow_api_internals-0.0.8-py3-none-any.whl", hash = "sha256:d7a02d22eb2c2f5801a1d46404f15334692df0e8d900c6ba5f2780a01e8f9b6c"},
+    {file = "stellanow_api_internals-0.0.8.tar.gz", hash = "sha256:d917c34ca5b10d20ad862e6a380ebef9711d4ae1c6f059ab4cfdc386347614b4"},
 ]
 
 [package.dependencies]
@@ -1611,5 +1611,5 @@ dev = ["black (>=19.3b0) ; python_version >= \"3.6\"", "pytest (>=4.6.2)"]
 
 [metadata]
 lock-version = "2.1"
-python-versions = ">=3.11,<4.0"
-content-hash = "154a80fc94c21aab72cbf9d2552a5234abf980fae6efd1b68fabcef70dc3da8d"
+python-versions = "^3.11"
+content-hash = "a8acaf6d168ca00a5c625e07597764db77015e761f6b8ce4eb99892c5f7351b8"
