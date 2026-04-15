@@ -15,7 +15,7 @@ exclude = ["tests/"]
 python = "^3.11"
 loguru = "^0.7.2"
 typing-extensions = "^4.10.0"
-stellanow-api-internals = ">=0.0.5"
+stellanow-api-internals = "^0.0.8"
 paho-mqtt = "^2.1.0"
 pydantic = "^2.10.6"
 nanoid = "^2.0.0"
