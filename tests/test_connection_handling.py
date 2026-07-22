@@ -263,7 +263,7 @@ class TestTokenRefreshRuntimeCheck:
                 side_effect=KeycloakError("Refresh failed", response_code=500)
             )
 
-            with pytest.raises(TokenRefreshError, match="Failed to refresh access token"):
+            with pytest.raises(TokenRefreshError, match="Server error during token refresh"):
                 await auth_service.refresh_access_token()
         finally:
             # Cleanup: stop any background refresh task that might have started

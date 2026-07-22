@@ -9,26 +9,9 @@ from keycloak.exceptions import KeycloakError
 
 from stellanow_sdk_python.authentication.auth_service import StellaNowAuthenticationService
 from stellanow_sdk_python.authentication.exceptions import TokenRefreshError
-from stellanow_sdk_python.config.eniviroment_config.stellanow_env_config import EnvConfig
-from stellanow_sdk_python.config.stellanow_auth_credentials import StellaNowCredentials
-from stellanow_sdk_python.config.stellanow_config import StellaProjectInfo
-from tests.conftest import TEST_CLIENT_ID, TEST_ORG_ID, TEST_PASSWORD, TEST_PROJECT_ID, TEST_USERNAME
 
 
-# Helper functions
-def create_auth_service() -> StellaNowAuthenticationService:
-    """Create a test authentication service instance with standard test data."""
-    project_info = StellaProjectInfo(organization_id=TEST_ORG_ID, project_id=TEST_PROJECT_ID)
-    credentials = StellaNowCredentials(client_id=TEST_CLIENT_ID, username=TEST_USERNAME, password=TEST_PASSWORD)
-    env_config = EnvConfig.stellanow_dev()
-    return StellaNowAuthenticationService(project_info=project_info, credentials=credentials, env_config=env_config)
-
-
-def create_token_response(access_token: str = "test_token", refresh_token: str = "test_refresh", expires_in: int = 300):
-    """Create a standard token response dictionary."""
-    return {"access_token": access_token, "refresh_token": refresh_token, "expires_in": expires_in}
-
-
+# Helper function
 def setup_auth_service_with_token(auth_service: StellaNowAuthenticationService, token_response: dict) -> None:
     """Set up auth service with existing token response."""
     auth_service.token_response = token_response
@@ -38,7 +21,7 @@ def setup_auth_service_with_token(auth_service: StellaNowAuthenticationService, 
 class TestPermanentAuthErrorDetection:
     """Test _is_permanent_auth_error helper method."""
 
-    def test_detects_invalid_credentials(self):
+    def test_detects_invalid_credentials(self, create_auth_service):
         """Test that invalid credentials errors are detected as permanent using generic patterns."""
         auth_service = create_auth_service()
 
@@ -59,7 +42,7 @@ class TestPermanentAuthErrorDetection:
             error = KeycloakError(error_message=error_msg, response_code=error_code)
             assert auth_service._is_permanent_auth_error(error) is expected, description
 
-    def test_html_responses_are_not_permanent(self):
+    def test_html_responses_are_not_permanent(self, create_auth_service):
         """Test that HTML responses (proxy/firewall errors) are NOT permanent."""
         auth_service = create_auth_service()
 
@@ -73,7 +56,7 @@ class TestPermanentAuthErrorDetection:
             error = KeycloakError(error_message=error_msg, response_code=error_code)
             assert auth_service._is_permanent_auth_error(error) is False, f"{description} should NOT be permanent"
 
-    def test_json_403_is_permanent(self):
+    def test_json_403_is_permanent(self, create_auth_service):
         """Test that JSON 403 errors (actual authorization issues) are permanent."""
         auth_service = create_auth_service()
 
@@ -90,7 +73,7 @@ class TestPermanentAuthErrorDetection:
 class TestTokenExpirationErrorDetection:
     """Test _is_token_expiration_error helper method."""
 
-    def test_detects_http_error_codes(self):
+    def test_detects_http_error_codes(self, create_auth_service):
         """Test that HTTP 400 and 401 are detected as token expiration errors."""
         auth_service = create_auth_service()
 
@@ -105,7 +88,7 @@ class TestTokenExpirationErrorDetection:
             error = KeycloakError(error_message=error_msg, response_code=error_code)
             assert auth_service._is_token_expiration_error(error) is expected, description
 
-    def test_detects_generic_token_patterns(self):
+    def test_detects_generic_token_patterns(self, create_auth_service):
         """Test that generic token expiration patterns are detected (Keycloak version-independent)."""
         auth_service = create_auth_service()
 
@@ -140,7 +123,7 @@ class TestTokenExpirationErrorDetection:
 class TestRefreshTokenRecovery:
     """Test refresh_access_token recovery from expired tokens."""
 
-    async def test_expired_token_triggers_reauthentication(self):
+    async def test_expired_token_triggers_reauthentication(self, create_auth_service, create_token_response):
         """Test that expired refresh token (HTTP 400/401) triggers full re-authentication."""
         auth_service = create_auth_service()
 
@@ -172,7 +155,7 @@ class TestRefreshTokenRecovery:
             assert auth_service.token_response == new_token
             assert auth_service.keycloak_openid.a_token.called
 
-    async def test_network_error_raises_token_refresh_error(self):
+    async def test_network_error_raises_token_refresh_error(self, create_auth_service, create_token_response):
         """Test that non-expiration errors (network, server) raise TokenRefreshError."""
         auth_service = create_auth_service()
 
@@ -187,9 +170,9 @@ class TestRefreshTokenRecovery:
         with pytest.raises(TokenRefreshError) as exc_info:
             await auth_service.refresh_access_token()
 
-        assert "Failed to refresh access token" in str(exc_info.value)
+        assert "Server error during token refresh" in str(exc_info.value)
 
-    async def test_both_refresh_and_reauth_fail(self):
+    async def test_both_refresh_and_reauth_fail(self, create_auth_service, create_token_response):
         """Test that TokenRefreshError is raised when both refresh and re-authentication fail."""
         auth_service = create_auth_service()
 
@@ -211,7 +194,7 @@ class TestRefreshTokenRecovery:
         error_message = str(exc_info.value)
         assert "Both token refresh and re-authentication failed" in error_message
 
-    async def test_old_token_cleared_before_reauthentication(self):
+    async def test_old_token_cleared_before_reauthentication(self, create_auth_service, create_token_response):
         """Test that old token data is cleared before re-authentication attempt."""
         auth_service = create_auth_service()
 
@@ -242,7 +225,7 @@ class TestRefreshTokenRecovery:
 class TestAutoRefreshRecovery:
     """Test _auto_refresh background task recovery behavior."""
 
-    async def test_auto_refresh_recovers_from_expired_token(self):
+    async def test_auto_refresh_recovers_from_expired_token(self, create_auth_service, create_token_response):
         """Test that auto-refresh task automatically recovers when refresh token expires."""
         auth_service = create_auth_service()
 
@@ -278,7 +261,7 @@ class TestAutoRefreshRecovery:
             # Cleanup
             await auth_service.stop_refresh_task()
 
-    async def test_auto_refresh_uses_exponential_backoff(self):
+    async def test_auto_refresh_uses_exponential_backoff(self, create_auth_service, create_token_response):
         """Test that auto-refresh uses exponential backoff on repeated transient errors."""
         auth_service = create_auth_service()
 
@@ -304,7 +287,7 @@ class TestAutoRefreshRecovery:
             # Cleanup
             await auth_service.stop_refresh_task()
 
-    async def test_successful_refresh_resets_backoff_delay(self):
+    async def test_successful_refresh_resets_backoff_delay(self, create_auth_service, create_token_response):
         """Test that successful refresh resets exponential backoff delay."""
         auth_service = create_auth_service()
 
@@ -312,28 +295,38 @@ class TestAutoRefreshRecovery:
             # Setup: short-lived token
             setup_auth_service_with_token(auth_service, create_token_response(expires_in=1))
 
-            # Mock: first call fails, second succeeds (should reset delay) with SHORT-LIVED token
+            # Mock: first call fails with 500 (server error), second succeeds with SHORT-LIVED token
             success_token = create_token_response("new_token", "new_refresh", expires_in=1)
-            call_count = 0
+            refresh_call_count = 0
+            auth_call_count = 0
 
             async def mock_refresh(token):
-                nonlocal call_count
-                call_count += 1
-                if call_count == 1:
+                nonlocal refresh_call_count
+                refresh_call_count += 1
+                if refresh_call_count == 1:
                     raise KeycloakError(error_message="Timeout", response_code=500)
                 return success_token
 
+            async def mock_auth(*args, **kwargs):
+                # After 500 error, token state is cleared, so re-authentication will be attempted
+                nonlocal auth_call_count
+                auth_call_count += 1
+                return success_token
+
             auth_service.keycloak_openid.a_refresh_token = AsyncMock(side_effect=mock_refresh)
+            auth_service.keycloak_openid.a_token = AsyncMock(side_effect=mock_auth)
 
             # Start refresh task
             await auth_service.start_refresh_task()
 
             # Wait for retry and recovery
+            # After 500 error, token is cleared, so it will attempt re-authentication
             await asyncio.sleep(5)
 
-            # Verify: recovered (called at least twice: once failed, once succeeded)
+            # Verify: recovered (either through refresh or re-authentication)
             assert auth_service.token_response is not None
-            assert call_count >= 2
+            # At least one attempt should have been made (either refresh or re-auth)
+            assert (refresh_call_count + auth_call_count) >= 2
         finally:
             # Cleanup
             await auth_service.stop_refresh_task()
